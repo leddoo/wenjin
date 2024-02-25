@@ -1,0 +1,10 @@
+[package]
+name = "wenjin-wasi-types"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wenjin = { path = "../wenjin" }
+wenjin-derive = { path = "../wenjin-derive" }
+derive_more = "0.99"
+

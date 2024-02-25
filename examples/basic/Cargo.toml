@@ -1,0 +1,11 @@
+[package]
+name = "ex-basic"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+wenjin = { path = "../../wenjin" }
+wenjin-derive = { path = "../../wenjin-derive" }
+wenjin-wasi-types = { path = "../../wasi-types" }
+

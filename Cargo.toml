@@ -1,0 +1,13 @@
+[workspace]
+members = [
+    "wenjin",
+    "wenjin-derive",
+    "wasi-types",
+    "examples/basic",
+]
+resolver = "2"
+
+
+[profile.release]
+debug = true
+
