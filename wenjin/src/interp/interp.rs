@@ -1374,14 +1374,14 @@ fn interp(store: &mut Store) -> (Result<(), ()>,) {
                 let dst = WasmPtr::new(reg!(dst_addr).u32());
                 let src = WasmPtr::new(reg!(src_addr).u32());
                 let len = reg!(len).u32();
-                vm_try!(state.memory.copy(dst, src, len));
+                vm_try!(state.memory.copy(dst, src, WasmSize(len)));
             }
 
             MEMORY_FILL { dst_addr, val, len } => {
                 let dst = WasmPtr::new(reg!(dst_addr).u32());
                 let val = reg!(val).u32();
                 let len = reg!(len).u32();
-                vm_try!(state.memory.fill(dst, val as u8, len));
+                vm_try!(state.memory.fill(dst, val as u8, WasmSize(len)));
             }
         }
     }

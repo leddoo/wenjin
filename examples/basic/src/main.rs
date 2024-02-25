@@ -33,6 +33,21 @@ fn main() {
             }
         }
     }
+
+
+    // accessing memory.
+    {
+        let print_bytes = store.add_func(|mem: &mut MemoryView, ptr: WasmPtr<u8>, len: WasmSize| -> Result<(), ()> {
+            let bytes = mem.bytes(ptr, len)?;
+            println!("{:x?}", bytes);
+            Ok(())
+        });
+
+        // @todo: WithMemory host functions can't be called directly,
+        // not sure why. but that's how you define one.
+        _ = print_bytes;
+        //store.call(print_bytes, (WasmPtr::new(0), WasmSize(128))).unwrap();
+    }
 }
 
 

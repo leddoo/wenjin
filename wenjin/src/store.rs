@@ -1019,24 +1019,24 @@ impl<'a> MemoryView<'a> {
         Ok(WasmSlice { ptr, len: len.usize(), phantom: PhantomData })
     }
 
-    pub fn bytes(&self, ptr: WasmPtr<u8>, len: u32) -> Result<&[u8], ()> {
+    pub fn bytes(&self, ptr: WasmPtr<u8>, len: WasmSize) -> Result<&[u8], ()> {
         let begin = ptr.addr as usize;
-        self.check_range(begin, len as usize)?;
+        self.check_range(begin, len.usize())?;
 
-        Ok(unsafe { core::slice::from_raw_parts(self.base.add(begin), len as usize) })
+        Ok(unsafe { core::slice::from_raw_parts(self.base.add(begin), len.usize()) })
     }
 
-    pub fn bytes_mut(&mut self, ptr: WasmPtr<u8>, len: u32) -> Result<&mut [u8], ()> {
+    pub fn bytes_mut(&mut self, ptr: WasmPtr<u8>, len: WasmSize) -> Result<&mut [u8], ()> {
         let begin = ptr.addr as usize;
-        self.check_range(begin, len as usize)?;
+        self.check_range(begin, len.usize())?;
 
-        Ok(unsafe { core::slice::from_raw_parts_mut(self.base.add(begin), len as usize) })
+        Ok(unsafe { core::slice::from_raw_parts_mut(self.base.add(begin), len.usize()) })
     }
 
-    pub fn copy(&mut self, dst: WasmPtr<u8>, src: WasmPtr<u8>, len: u32) -> Result<(), ()> {
+    pub fn copy(&mut self, dst: WasmPtr<u8>, src: WasmPtr<u8>, len: WasmSize) -> Result<(), ()> {
         let dst = dst.addr as usize;
         let src = src.addr as usize;
-        let len = len as usize;
+        let len = len.usize();
         self.check_range(dst, len)?;
         self.check_range(src, len)?;
 
@@ -1048,9 +1048,9 @@ impl<'a> MemoryView<'a> {
         Ok(())
     }
 
-    pub fn fill(&mut self, dst: WasmPtr<u8>, val: u8, len: u32) -> Result<(), ()> {
+    pub fn fill(&mut self, dst: WasmPtr<u8>, val: u8, len: WasmSize) -> Result<(), ()> {
         let dst = dst.addr as usize;
-        let len = len as usize;
+        let len = len.usize();
         self.check_range(dst, len)?;
 
         unsafe {
