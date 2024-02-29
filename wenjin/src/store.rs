@@ -224,7 +224,6 @@ impl Store {
     }
 
     pub fn instantiate_module(&mut self, module: Module, imports: &Imports) -> Result<Instance, ()> {
-        //assert_eq!(module.0.store, self.id);
         let module_id = module.0.id;
         let StoreModule { module, interp_funcs } = self.modules[module_id].clone();
 
@@ -356,7 +355,6 @@ impl Store {
 
 
     pub fn exported_func_dyn(&self, instance: Instance, name: &str) -> Option<Func> {
-        //assert_eq!(instance.0.store, self.id);
         let inst = &self.instances[instance.0.id];
         let modd = &self.modules[inst.module_id];
 
@@ -372,7 +370,6 @@ impl Store {
     }
 
     pub fn indexed_func_dyn(&self, instance: Instance, index: u32) -> Option<Func> {
-        //assert_eq!(instance.0.store, self.id);
         let inst = &self.instances[instance.0.id];
 
         inst.funcs.get(index as usize).copied()
@@ -412,8 +409,6 @@ impl Store {
     }
 
     pub fn call<P: WasmTypes, R: WasmTypes>(&mut self, func: TypedFunc<P, R>, args: P) -> Result<R, ()> {
-        //assert_eq!(func.0.store, self.id);
-
         let func = self.funcs[func.func.0.id];
 
         match func.data {
@@ -443,8 +438,6 @@ impl Store {
     }
 
     pub fn call_dyn(&mut self, func: Func, args: &[Value]) -> Result<Vec<Value>, ()> {
-        //assert_eq!(func.0.store, self.id);
-
         let func = self.funcs[func.0.id];
 
         match func.data {
@@ -509,7 +502,6 @@ impl Store {
 
 
     pub fn exported_memory(&self, instance: Instance, name: &str) -> Option<Memory> {
-        //assert_eq!(instance.0.store, self.id);
         let inst = &self.instances[instance.0.id];
         let modd = &self.modules[inst.module_id];
 
@@ -525,13 +517,11 @@ impl Store {
     }
 
     pub fn memory_view(&mut self, memory: Memory) -> MemoryView {
-        //assert_eq!(memory.0.store, self.id);
         let mem = &mut self.memories[memory.0.id];
         MemoryView::new_unsafe(mem.bytes.as_mut_ptr(), mem.bytes.len())
     }
 
     pub fn with_memory_view<R, F: FnOnce(&MemoryView) -> Result<R, ()>>(&self, memory: Memory, f: F) -> Result<R, ()> {
-        //assert_eq!(memory.0.store, self.id);
         let mem = &self.memories[memory.0.id];
         let mem = MemoryView::new_unsafe(mem.bytes.as_ptr() as *mut u8, mem.bytes.len());
         f(&mem)

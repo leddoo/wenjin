@@ -9,7 +9,13 @@ use super::bytecode::{Op, Word};
 use super::*;
 
 
-pub(crate) fn run<P: WasmTypes, R: WasmTypes>(store: &mut Store, inst: InstanceId, func: InterpFuncId, args: P) -> Result<R, ()> {
+pub(crate) fn run<P: WasmTypes, R: WasmTypes>
+    (store: &mut Store,
+     inst: InstanceId,
+     func: InterpFuncId,
+     args: P)
+    -> Result<R, ()>
+{
     let this = &mut store.interp;
 
     let InterpFunc { code, stack_size } = this.funcs[func];
@@ -28,7 +34,15 @@ pub(crate) fn run<P: WasmTypes, R: WasmTypes>(store: &mut Store, inst: InstanceI
     Ok(R::from_stack_values(store.interp.stack.as_ptr()))
 }
 
-pub(crate) fn run_dyn(store: &mut Store, inst: InstanceId, func: InterpFuncId, ty: &wasm::FuncType, args: &[Value], rets: &mut [Value]) -> Result<(), ()> {
+pub(crate) fn run_dyn
+    (store: &mut Store,
+     inst: InstanceId,
+     func: InterpFuncId,
+     ty: &wasm::FuncType,
+     args: &[Value],
+     rets: &mut [Value])
+    -> Result<(), ()>
+{
     let this = &mut store.interp;
 
     debug_assert_eq!(args.len(), ty.params.len());
@@ -275,16 +289,19 @@ impl InterpState {
     #[inline]
     fn new() -> InterpState {
         InterpState {
-            instance: None.into(), func: None.into(),
+            instance: None.into(),
+            func: None.into(),
             memory: MemoryView::new_unsafe(core::ptr::null_mut(), 0),
             memories: ParaPtr::new(&[]),
             funcs:    ParaPtr::new(&[]),
             globals:  ParaPtr::new(&[]),
             tables:   ParaPtr::new(&[]),
-            pc: core::ptr::null(), bp: core::ptr::null_mut(),
+            pc: core::ptr::null(),
+            bp: core::ptr::null_mut(),
         }
     }
 
+    // returns true if caller is native code.
     #[inline]
     fn pop_frame(&mut self, store: &mut Store) -> bool {
         let interp = &mut store.interp;
@@ -320,7 +337,6 @@ impl InterpState {
         return false;
     }
 
-    // @todo: consider putting more of the logic in here.
     #[inline]
     fn push_frame(&self, store: &mut Store) -> usize {
         let this = &mut store.interp;
