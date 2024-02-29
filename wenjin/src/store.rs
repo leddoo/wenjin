@@ -34,7 +34,6 @@ impl Value {
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 struct StoreHandle<T> {
-    store: StoreId,
     id: T,
 }
 
@@ -46,7 +45,6 @@ macro_rules! define_store_handle {
 }
 
 sti::define_key!(pub(crate), u32, TypeId);
-sti::define_key!(pub(crate), u32, StoreId);
 sti::define_key!(pub(crate), u32, ModuleId);
 sti::define_key!(pub(crate), u32, InstanceId, opt: OptInstanceId);
 sti::define_key!(pub(crate), u32, FuncId, rng: FuncIds);
@@ -222,7 +220,7 @@ impl Store {
         let interp_funcs = self.interp.compile(&module, code, &self.persistent, &mut self.temporary)?;
 
         let id = self.modules.push(StoreModule { module, interp_funcs });
-        Ok(Module(StoreHandle { store: StoreId(0), id }))
+        Ok(Module(StoreHandle { id }))
     }
 
     pub fn instantiate_module(&mut self, module: Module, imports: &Imports) -> Result<Instance, ()> {
@@ -353,7 +351,7 @@ impl Store {
         let _instance = self.instances.push(StoreInstance { module_id, funcs, memories, globals, tables });
         assert_eq!(instance, _instance);
 
-        Ok(Instance(StoreHandle { store: StoreId(0), id: instance }))
+        Ok(Instance(StoreHandle { id: instance }))
     }
 
 
@@ -367,7 +365,7 @@ impl Store {
 
             let wasm::ExportData::Func(index) = export.data else { continue };
             let id = inst.funcs[index as usize];
-            return Some(Func(StoreHandle { store: StoreId(0), id }));
+            return Some(Func(StoreHandle { id }));
         }
 
         return None;
@@ -378,7 +376,7 @@ impl Store {
         let inst = &self.instances[instance.0.id];
 
         inst.funcs.get(index as usize).copied()
-        .map(|id| Func(StoreHandle { store: StoreId(0), id }))
+        .map(|id| Func(StoreHandle { id }))
     }
 
     pub fn check_func_type<P: WasmTypes, R: WasmTypes>(&self, func: Func) -> Option<TypedFunc<P, R>> {
@@ -520,7 +518,7 @@ impl Store {
 
             let wasm::ExportData::Memory(index) = export.data else { continue };
             let id = inst.memories[index as usize];
-            return Some(Memory(StoreHandle { store: StoreId(0), id }));
+            return Some(Memory(StoreHandle { id }));
         }
 
         return None;
@@ -555,7 +553,7 @@ impl Store {
             params: unsafe { &*(Vec::leak(ps) as *const _) },
             rets:   unsafe { &*(Vec::leak(rs) as *const _) },
         });
-        return Type(StoreHandle { store: StoreId(0), id });
+        return Type(StoreHandle { id });
     }
 
     pub fn add_func<P: WasmTypes, R: WasmTypes, K: HostFuncKind, H: HostFunc<P, R, K>>(&mut self, func: H) -> TypedFunc<P, R> {
@@ -570,7 +568,7 @@ impl Store {
                 }),
             })});
 
-        return TypedFunc { func: Func(StoreHandle { store: StoreId(0), id }), phantom: PhantomData };
+        return TypedFunc { func: Func(StoreHandle { id }), phantom: PhantomData };
     }
 }
 

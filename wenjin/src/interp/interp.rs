@@ -102,9 +102,7 @@ impl StackValue {
 
     #[inline(always)]
     pub fn i32(&self) -> i32 {
-        match self.0 {
-            Value::I32(v) => v, _ => unreachable!()
-        }
+        match self.0 { Value::I32(v) => v, _ => unreachable!() }
     }
 
     #[inline(always)]
@@ -112,9 +110,7 @@ impl StackValue {
 
     #[inline(always)]
     pub fn i64(&self) -> i64 {
-        match self.0 {
-            Value::I64(v) => v, _ => unreachable!()
-        }
+        match self.0 { Value::I64(v) => v, _ => unreachable!() }
     }
 
     #[inline(always)]
@@ -122,16 +118,12 @@ impl StackValue {
 
     #[inline(always)]
     pub fn f32(&self) -> f32 {
-        match self.0 {
-            Value::F32(v) => v, _ => unreachable!()
-        }
+        match self.0 { Value::F32(v) => v, _ => unreachable!() }
     }
 
     #[inline(always)]
     pub fn f64(&self) -> f64 {
-        match self.0 {
-            Value::F64(v) => v, _ => unreachable!()
-        }
+        match self.0 { Value::F64(v) => v, _ => unreachable!() }
     }
 }
 
