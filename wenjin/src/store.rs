@@ -249,13 +249,17 @@ impl Store {
                 let ty = module.imports.funcs[import.index as usize];
                 let ty = &module.types[ty as usize];
 
-                let ext = imports.find(import.module, import.name).ok_or(())?;
+                let Some(ext) = imports.find(import.module, import.name) else {
+                    println!("missing import {:?}::{:?}", import.module, import.name);
+                    return Err(());
+                };
 
                 let Extern::Func(func) = ext;// else { return Err(()) };
                 let func = func.0.id;
 
                 let func_ty = &self.types[TypeId(self.funcs[func].ty)];
                 if func_ty != ty {
+                    println!("import func type mismatch");
                     return Err(());
                 }
                 

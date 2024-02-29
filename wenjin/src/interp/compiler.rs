@@ -428,8 +428,20 @@ impl<'m, A: Alloc + Copy> Compiler<'m, A> {
             let num_rets = frame.ty.end_types(self.module).len();
             self.push_n(num_rets);
 
-            if frame.kind != FrameKind::Loop {
-                self.add_instr(InstrData::Label { id: frame.label });
+            match frame.kind {
+                FrameKind::Block |
+                FrameKind::Else => {
+                    self.add_instr(InstrData::Label { id: frame.label });
+                }
+
+                FrameKind::If { else_label } => {
+                    // this if doesn't have an else.
+                    self.add_instr(InstrData::Label { id: else_label });
+                    self.add_instr(InstrData::Label { id: frame.label });
+                }
+
+                // loop has label at beginning.
+                FrameKind::Loop => {},
             }
         }
         else {
