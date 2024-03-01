@@ -1,6 +1,7 @@
 mod instr;
 mod bytecode;
 mod compiler;
+mod stack;
 mod interp;
 
 
@@ -9,10 +10,11 @@ use sti::vec::Vec;
 use sti::keyed::{Key, KVec};
 
 use crate::wasm;
-use interp::*;
+use stack::Frame;
 
 
-pub(crate) use interp::{StackValue, run, run_dyn};
+pub(crate) use stack::StackValue;
+pub(crate) use interp::{run, run_dyn};
 
 
 sti::define_key!(pub(crate), u32, InterpFuncId, opt: OptInterpFuncId, rng: InterpFuncIds);

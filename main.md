@@ -1,5 +1,8 @@
 
 - todo:
+    - `Box<UnsafeCell>` all the things.
+    - merge interp stuff into `Store`.
+    - get rid of /para
     - new `Ctx` api.
         - document where stuff is stored,
           and when it is aliased by what.
@@ -20,5 +23,6 @@
         - gen indices (could have store specific init value).
         - when trying to delete running functions, defer.
     - impl unimpls.
+    - parser trait instead of the inline thing.
     - robustness.
 

@@ -1,3 +1,26 @@
+/*
+
+store data structures overview:
+
+    store data:
+        - wasm objects.
+        - interpreter state.
+
+    the store contains several KVecs, one for each of the wasm objects:
+    types, modules, instances, functions, memories, globals, tables.
+
+    mutable wasm objects are heap allocated, so they can be aliased
+    while their KVec is being modified.
+
+    internally, access to a `&mut Store` *does not* imply exclusive access
+    to anything contained in the store.
+    any aliasable data must be wrapped in `UnsafeCell`.
+    aliasing invariants must be documented where the data is stored.
+
+
+*/
+
+
 use core::marker::PhantomData;
 
 use sti::arena::Arena;
@@ -5,30 +28,9 @@ use sti::vec::Vec;
 use sti::keyed::*;
 
 use crate::ParaSliceMut;
+use crate::value::Value;
 use crate::wasm;
 use crate::interp::{*, self};
-
-
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Value {
-    I32 (i32),
-    I64 (i64),
-    F32 (f32),
-    F64 (f64),
-}
-
-impl Value {
-    pub fn ty(self) -> wasm::ValueType {
-        use Value::*;
-        match self {
-            I32 (_) => wasm::ValueType::I32,
-            I64 (_) => wasm::ValueType::I64,
-            F32 (_) => wasm::ValueType::F32,
-            F64 (_) => wasm::ValueType::F64,
-        }
-    }
-}
 
 
 
