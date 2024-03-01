@@ -15,17 +15,21 @@ store data structures overview:
     internally, access to a `&mut Store` *does not* imply exclusive access
     to anything contained in the store.
     any aliasable data must be wrapped in `UnsafeCell`.
-    aliasing invariants must be documented where the data is stored.
-
+    global aliasing invariants must be documented where the data is stored.
+    for example, how wasm objects are referenced by the interpreter state.
+    lexically contained aliasing should be documented in the code.
+    todo: when should it be documented on the function?
 
 */
 
 
 use core::marker::PhantomData;
+use core::cell::UnsafeCell;
 
 use sti::arena::Arena;
+use sti::boks::Box;
 use sti::vec::Vec;
-use sti::keyed::*;
+use sti::keyed::KVec;
 
 use crate::ParaSliceMut;
 use crate::value::Value;
@@ -118,7 +122,7 @@ pub struct Store {
     pub(crate) modules:    KVec<ModuleId,      StoreModule>,
     pub(crate) instances:  KVec<InstanceId,    StoreInstance>,
     pub(crate) funcs:      KVec<FuncId,        StoreFunc>,
-    pub(crate) memories:   KVec<MemoryId,      StoreMemory>,
+    pub(crate) memories:   KVec<MemoryId,      Box<UnsafeCell<StoreMemory>>>,
     pub(crate) globals:    KVec<GlobalId,      StoreGlobal>,
     pub(crate) tables:     KVec<TableId,       StoreTable>,
 
@@ -290,7 +294,8 @@ impl Store {
                 bytes.set_len(initial_size);
             }
 
-            let memory = self.memories.push(StoreMemory { limits: memory.limits, bytes });
+            let memory = StoreMemory { limits: memory.limits, bytes };
+            let memory = self.memories.push(Box::new(memory.into()));
             memories.push(memory);
         }
 
@@ -338,7 +343,13 @@ impl Store {
         for data in module.datas {
             let wasm::DataKind::Active { mem_idx, offset } = data.kind else { continue };
 
-            let memory = &mut self.memories[memories[mem_idx as usize]];
+            // safety: this memory was just created,
+            //  and access is local to this block,
+            //  so the memory cannot be aliased.
+            let memory = unsafe {
+                &mut *self.memories[memories[mem_idx as usize]].get()
+            };
+
             assert!(offset as usize + data.values.len() <= memory.bytes.len());
             unsafe {
                 core::ptr::copy_nonoverlapping(
@@ -519,14 +530,16 @@ impl Store {
     }
 
     pub fn memory_view(&mut self, memory: Memory) -> MemoryView {
-        let mem = &mut self.memories[memory.0.id];
-        MemoryView::new_unsafe(mem.bytes.as_mut_ptr(), mem.bytes.len())
+        //let mem = &mut self.memories[memory.0.id];
+        //MemoryView::new_unsafe(mem.bytes.as_mut_ptr(), mem.bytes.len())
+        todo!()
     }
 
     pub fn with_memory_view<R, F: FnOnce(&MemoryView) -> Result<R, ()>>(&self, memory: Memory, f: F) -> Result<R, ()> {
-        let mem = &self.memories[memory.0.id];
-        let mem = MemoryView::new_unsafe(mem.bytes.as_ptr() as *mut u8, mem.bytes.len());
-        f(&mem)
+        //let mem = &self.memories[memory.0.id];
+        //let mem = MemoryView::new_unsafe(mem.bytes.as_ptr() as *mut u8, mem.bytes.len());
+        //f(&mem)
+        todo!()
     }
 
 

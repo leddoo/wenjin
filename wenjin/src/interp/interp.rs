@@ -134,7 +134,8 @@ impl InterpState {
         if instance.some() != self.instance {
             let inst = &store.instances[instance];
             if inst.memories.len() > 0 {
-                let mem = &mut store.memories[inst.memories[0]];
+                // safety: there are no other global references right now.
+                let mem = unsafe { &mut *store.memories[inst.memories[0]].get() };
                 self.memory = MemoryView::new_unsafe(mem.bytes.as_mut_ptr(), mem.bytes.len());
             }
             else {
@@ -1183,7 +1184,8 @@ fn interp(store: &mut Store) -> (Result<(), ()>,) {
                 }
 
                 let memory = unsafe { state.memories.read(0) };
-                let memory = &mut store.memories[memory];
+                // safety: there are no other global references right now.
+                let memory = unsafe { &mut *store.memories[memory].get() };
                 let old_pages = memory.bytes.len() / wasm::PAGE_SIZE;
 
                 let old_size = memory.bytes.len();

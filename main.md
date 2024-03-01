@@ -1,7 +1,15 @@
 
 - todo:
-    - `Box<UnsafeCell>` all the things.
     - merge interp stuff into `Store`.
+    - `MemoryCtx`.
+        - basically just a pointer to `StoreMemory`.
+        - requires `&mut Store`.
+        - may invalidate interp mem ptr.
+            - so interp state must make sure that it fixes that ptr
+              on return of host fn.
+            - maybe have some shared "dirty flag" as an opt.
+              but for now, prefer deopt & simplify.
+        - move memory stuff into separate file.
     - get rid of /para
     - new `Ctx` api.
         - document where stuff is stored,
