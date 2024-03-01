@@ -1,9 +1,10 @@
 [workspace]
 members = [
-    "wenjin",
+    "wenjin-wasm",
     "wenjin-derive",
-    "wasi-types",
-    "examples/basic",
+    #"wenjin",
+    #"wasi-types",
+    #"examples/basic",
 ]
 resolver = "2"
 

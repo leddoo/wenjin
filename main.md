@@ -1,5 +1,8 @@
 
 - todo:
+    - rewrite:
+        - parser:
+            - parse `br_table`, pass something that iterates again.
     - merge interp stuff into `Store`.
     - `MemoryCtx`.
         - basically just a pointer to `StoreMemory`.
