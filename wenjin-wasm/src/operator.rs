@@ -214,6 +214,20 @@ macro_rules! operator_visitor {
 for_each_operator!(operator_visitor);
 
 
+macro_rules! refmut_operator_visitor {
+    ($($op:ident $({ $($arg:ident: $argty:ty),* })? => $visitor:ident)*) => {
+        impl<V: OperatorVisitor> OperatorVisitor for &mut V {
+            type Output = V::Output;
+
+            $(fn $visitor(&mut self, $($($arg: $argty),*)?) -> Self::Output {
+                V::$visitor(&mut **self, $($($arg),*)?)
+            })*
+        }
+    };
+}
+for_each_operator!(refmut_operator_visitor);
+
+
 pub struct NewOperator;
 
 macro_rules! new_operator {

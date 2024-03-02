@@ -1,8 +1,9 @@
 
 - todo:
     - rewrite:
+        - assemble locals in validator.
+        - the rest of the validator owl.
         - parse `br_table`, pass something that iterates again.
-        - validator as visitor.
     - merge interp stuff into `Store`.
     - `MemoryCtx`.
         - basically just a pointer to `StoreMemory`.

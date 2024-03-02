@@ -5,7 +5,7 @@ use sti::manual_vec::ManualVec;
 
 use crate::leb128;
 use crate::{ValueType, RefType, FuncType, BlockType, Limits, TableType, MemoryType, GlobalType};
-use crate::{Import, ImportKind, Global, Export, ExportKind, Element, ElementKind, Code, Data, DataKind};
+use crate::{Import, ImportKind, Imports, Global, Export, ExportKind, Element, ElementKind, Code, Data, DataKind};
 use crate::{SubSection, Section, SectionKind, CustomSection};
 use crate::ConstExpr;
 use crate::{ModuleLimits, Module};
@@ -623,11 +623,54 @@ impl<'a> Parser<'a> {
                         ManualVec::with_cap_in(alloc, num_imports as usize)
                         .ok_or_else(|| todo!())?;
 
+                    let mut num_funcs = 0;
+                    let mut num_tables = 0;
+                    let mut num_memories = 0;
+                    let mut num_globals = 0;
+
                     for _ in 0..num_imports {
-                        imports.push(sp.parse_import()?).unwrap_debug();
+                        let import = sp.parse_import()?;
+                        match import.kind {
+                            ImportKind::Func(_)   => num_funcs    += 1,
+                            ImportKind::Table(_)  => num_tables   += 1,
+                            ImportKind::Memory(_) => num_memories += 1,
+                            ImportKind::Global(_) => num_globals  += 1,
+                        }
+                        imports.push(import).unwrap_debug();
                     }
 
-                    module.imports = imports.leak();
+                    let mut funcs =
+                        ManualVec::with_cap_in(alloc, num_funcs)
+                        .ok_or_else(|| todo!())?;
+
+                    let mut tables =
+                        ManualVec::with_cap_in(alloc, num_tables)
+                        .ok_or_else(|| todo!())?;
+
+                    let mut memories =
+                        ManualVec::with_cap_in(alloc, num_memories)
+                        .ok_or_else(|| todo!())?;
+
+                    let mut globals =
+                        ManualVec::with_cap_in(alloc, num_globals)
+                        .ok_or_else(|| todo!())?;
+
+                    for import in imports.iter().copied() {
+                        match import.kind {
+                            ImportKind::Func(it)   => funcs.push(it).unwrap_debug(),
+                            ImportKind::Table(it)  => tables.push(it).unwrap_debug(),
+                            ImportKind::Memory(it) => memories.push(it).unwrap_debug(),
+                            ImportKind::Global(it) => globals.push(it).unwrap_debug(),
+                        }
+                    }
+
+                    module.imports = Imports {
+                        imports: imports.leak(),
+                        funcs:    funcs.leak(),
+                        tables:   tables.leak(),
+                        memories: memories.leak(),
+                        globals:  globals.leak(),
+                    };
                 }
 
                 SectionKind::Function => {

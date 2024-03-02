@@ -10,8 +10,10 @@ fn parse_and_validate<'a>(wasm: &'a [u8], alloc: &'a Arena) -> Module<'a> {
     for (i, code) in module.codes.iter().enumerate() {
         let mut p = Parser::from_sub_section(wasm, code.expr);
 
+        validator.begin_func(module.funcs[i]);
+
         while !p.is_done() {
-            p.parse_operator().unwrap();
+            p.parse_operator_with(&mut validator).unwrap().unwrap();
         }
     }
 
@@ -39,7 +41,7 @@ fn lua_wasm() {
        Custom start=0x0005ae6d end=0x0005ae99 (size=0x0000002c) "target_features"
     */
     assert_eq!(module.types.len(), 38);
-    assert_eq!(module.imports.len(), 27);
+    assert_eq!(module.imports.imports.len(), 27);
     assert_eq!(module.funcs.len(), 452);
     assert_eq!(module.tables.len(), 1);
     assert_eq!(module.memories.len(), 1);

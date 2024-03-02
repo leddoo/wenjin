@@ -3,8 +3,6 @@ pub mod leb128;
 pub mod opcode;
 pub mod operator;
 pub mod parser;
-// @temp
-#[allow(unused)]
 pub mod validator;
 
 pub use parser::{Parser, ParseError, ParseErrorKind};
@@ -161,10 +159,21 @@ pub struct Import<'a> {
 #[derive(Clone, Copy, Debug)]
 pub enum ImportKind {
     Func(TypeIdx),
+    Table(TableType),
     Memory(MemoryType),
     Global(GlobalType),
-    Table(TableType),
 }
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Imports<'a> {
+    pub imports: &'a [Import<'a>],
+
+    pub funcs:    &'a [TypeIdx],
+    pub tables:   &'a [TableType],
+    pub memories: &'a [MemoryType],
+    pub globals:  &'a [GlobalType],
+}
+
 
 
 #[derive(Clone, Copy, Debug)]
@@ -344,7 +353,7 @@ impl ModuleLimits {
 #[derive(Default)]
 pub struct Module<'a> {
     pub types:      &'a [FuncType<'a>],
-    pub imports:    &'a [Import<'a>],
+    pub imports:    Imports<'a>,
     pub funcs:      &'a [TypeIdx],
     pub tables:     &'a [TableType],
     pub memories:   &'a [MemoryType],
