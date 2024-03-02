@@ -3,6 +3,12 @@ pub mod leb128;
 pub mod opcode;
 pub mod operator;
 pub mod parser;
+// @temp
+#[allow(unused)]
+pub mod validator;
+
+pub use parser::{Parser, ParseError, ParseErrorKind};
+pub use validator::{Validator, ValidatorError};
 
 
 pub const PAGE_SIZE: usize = 64*1024;
@@ -92,7 +98,6 @@ pub enum BlockType {
     Func(TypeIdx),
 }
 
-/*
 impl BlockType {
     pub fn begin_types<'m>(self, module: &Module<'m>) -> &'m [ValueType] {
         match self {
@@ -110,7 +115,6 @@ impl BlockType {
         }
     }
 }
-*/
 
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -210,6 +214,13 @@ pub enum ElementKind {
 
 
 #[derive(Clone, Copy, Debug)]
+pub struct Code<'a> {
+    pub locals: &'a [ValueType],
+    pub expr: SubSection,
+}
+
+
+#[derive(Clone, Copy, Debug)]
 pub struct Data<'a> {
     pub kind: DataKind,
     pub values: &'a [u8],
@@ -221,24 +232,6 @@ pub enum DataKind {
     Active { mem: MemoryIdx, offset: u32 },
 }
 
-
-/*
-#[derive(Clone, Debug, Default)]
-pub struct Module<'a> {
-    pub imports: Imports<'a>,
-
-    pub start: Option<FuncIdx>,
-
-    pub types:    &'a [FuncType<'a>],
-    pub funcs:    &'a [TypeIdx],
-    pub tables:   &'a [TableType],
-    pub memories: &'a [MemoryType],
-    pub globals:  &'a [Global],
-    pub exports:  &'a [Export<'a>],
-    pub elems:    &'a [Elem<'a>],
-    pub datas:    &'a [Data<'a>],
-}
-*/
 
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -301,5 +294,67 @@ pub struct CustomSection<'a> {
     pub data: &'a [u8],
 }
 
+
+#[derive(Clone, Copy, Debug)]
+pub struct ModuleLimits {
+    pub max_types:    u32,
+    pub max_imports:  u32,
+    pub max_funcs:    u32,
+    pub max_tables:   u32,
+    pub max_memories: u32,
+    pub max_globals:  u32,
+    pub max_exports:  u32,
+    pub max_elements: u32,
+    pub max_locals:   u32,
+    pub max_datas:    u32,
+    pub max_customs:  u32,
+}
+
+impl ModuleLimits {
+    pub const DEFAULT: ModuleLimits = ModuleLimits {
+        max_types:    1024,
+        max_imports:   512,
+        max_funcs:    4096,
+        max_tables:    128,
+        max_memories:   32,
+        max_globals:   128,
+        max_exports:  4096,
+        max_elements:  128,
+        max_locals:    256,
+        max_datas:     512,
+        max_customs:   512,
+    };
+
+    pub const UNLIMITED: ModuleLimits = ModuleLimits {
+        max_types:    u32::MAX,
+        max_imports:  u32::MAX,
+        max_funcs:    u32::MAX,
+        max_tables:   u32::MAX,
+        max_memories: u32::MAX,
+        max_globals:  u32::MAX,
+        max_exports:  u32::MAX,
+        max_elements: u32::MAX,
+        max_locals:   u32::MAX,
+        max_datas:    u32::MAX,
+        max_customs:  u32::MAX,
+    };
+}
+
+
+#[derive(Default)]
+pub struct Module<'a> {
+    pub types:      &'a [FuncType<'a>],
+    pub imports:    &'a [Import<'a>],
+    pub funcs:      &'a [TypeIdx],
+    pub tables:     &'a [TableType],
+    pub memories:   &'a [MemoryType],
+    pub globals:    &'a [Global],
+    pub exports:    &'a [Export<'a>],
+    pub start:      Option<FuncIdx>,
+    pub elements:   &'a [Element<'a>],
+    pub codes:      &'a [Code<'a>],
+    pub datas:      &'a [Data<'a>],
+    pub customs:    &'a [CustomSection<'a>],
+}
 
 

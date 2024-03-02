@@ -23,7 +23,7 @@ dependencies = [
 [[package]]
 name = "sti"
 version = "0.1.11"
-source = "git+https://github.com/leddoo/sti#618217d3bbef3c3399a18002936366374e256f17"
+source = "git+https://github.com/leddoo/sti#1023384913be8575e3a8c50a9b0f0614e18ccc2e"
 
 [[package]]
 name = "syn"

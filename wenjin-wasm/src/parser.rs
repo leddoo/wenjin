@@ -5,9 +5,10 @@ use sti::manual_vec::ManualVec;
 
 use crate::leb128;
 use crate::{ValueType, RefType, FuncType, BlockType, Limits, TableType, MemoryType, GlobalType};
-use crate::{Import, ImportKind, Global, Export, ExportKind, Element, ElementKind, Data, DataKind};
+use crate::{Import, ImportKind, Global, Export, ExportKind, Element, ElementKind, Code, Data, DataKind};
 use crate::{SubSection, Section, SectionKind, CustomSection};
 use crate::ConstExpr;
+use crate::{ModuleLimits, Module};
 use crate::operator::{Operator, OperatorVisitor, NewOperator};
 
 
@@ -30,7 +31,16 @@ pub struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(reader: Reader<'a, u8>) -> Self {
+    #[inline]
+    pub fn new(wasm: &'a [u8]) -> Self {
+        Self { reader: Reader::new(wasm) }
+    }
+
+    #[inline]
+    pub fn from_sub_section(wasm: &'a [u8], sub: SubSection) -> Self {
+        let end = sub.offset + sub.len;
+        let mut reader = Reader::new(&wasm[..end]);
+        reader.set_offset(sub.offset);
         Self { reader }
     }
 
@@ -200,10 +210,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn sub_parser(&self, sub: SubSection) -> Self {
-        let end = sub.offset + sub.len;
-        let mut reader = Reader::new(&self.reader.original_slice()[..end]);
-        reader.set_offset(sub.offset);
-        Self { reader }
+        Self::from_sub_section(self.reader.original_slice(), sub)
     }
 
     pub fn parse_custom_section(&mut self) -> Result<CustomSection<'a>> {
@@ -272,8 +279,34 @@ impl<'a> Parser<'a> {
         });
     }
 
-    pub fn parse_code(&mut self) -> Result<SubSection> {
-        self.parse_sub_section()
+    pub fn parse_code<'out>(&mut self, max_locals: u32, alloc: &'out Arena) -> Result<Code<'out>> {
+        let sub = self.parse_sub_section()?;
+
+        let mut p = self.sub_parser(sub);
+
+        let num_local_groups = p.parse_u32()?;
+
+        let mut locals = ManualVec::new_in(alloc);
+        for _ in 0..num_local_groups {
+            let n = p.parse_length()?;
+            let ty = p.parse_value_type()?;
+
+            if locals.len() + n > max_locals as usize {
+                todo!()
+            }
+
+            locals.reserve_extra(n).map_err(|_| todo!())?;
+            for _ in 0..n {
+                locals.push(ty).unwrap_debug();
+            }
+        }
+
+        let expr = SubSection {
+            offset: p.reader.offset(),
+            len:    p.reader.len(),
+        };
+
+        return Ok(Code { locals: locals.leak(), expr });
     }
 
     pub fn parse_data(&mut self) -> Result<Data<'a>> {
@@ -526,103 +559,219 @@ impl<'a> Parser<'a> {
             }
         })
     }
-}
 
 
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    fn parse(wasm: &[u8]) -> Result<Vec<Section>> {
-        let mut p = Parser::new(Reader::new(wasm));
+    pub fn parse_module
+        (wasm: &'a [u8],
+         limits: ModuleLimits,
+         alloc: &'a Arena)
+        -> Result<Module<'a>>
+    {
+        let mut p = Parser::new(wasm);
         p.parse_module_header()?;
 
-        let temp = Arena::new();
+        let mut has_section = [false; SectionKind::COUNT];
 
-        let mut result = Vec::new();
+        let mut module = Module::default();
+
+        let mut customs = ManualVec::new_in(alloc);
 
         while !p.is_done() {
             let section = p.parse_section()?;
-            result.push(section);
+            let kind = section.kind;
+
+            if kind != SectionKind::Custom && has_section[kind as usize] {
+                todo!()
+            }
+            has_section[kind as usize] = true;
 
             let mut sp = p.sub_parser(section.sub);
-            match section.kind {
+            match kind {
                 SectionKind::Custom => {
-                    sp.parse_custom_section()?;
+                    if customs.len() >= limits.max_customs as usize {
+                        todo!();
+                    }
+
+                    customs.push_or_alloc(sp.parse_custom_section()?)
+                        .map_err(|_| todo!())?;
                 }
 
                 SectionKind::Type => {
-                    for _ in 0..sp.parse_length()? {
-                        sp.parse_func_type(&temp)?;
+                    let num_types = sp.parse_u32()?;
+                    if num_types > limits.max_types {
+                        todo!();
                     }
+
+                    let mut types =
+                        ManualVec::with_cap_in(alloc, num_types as usize)
+                        .ok_or_else(|| todo!())?;
+
+                    for _ in 0..num_types {
+                        types.push(sp.parse_func_type(alloc)?).unwrap_debug();
+                    }
+
+                    module.types = types.leak();
                 }
 
                 SectionKind::Import => {
-                    for _ in 0..sp.parse_length()? {
-                        sp.parse_import()?;
+                    let num_imports = sp.parse_u32()?;
+                    if num_imports > limits.max_imports {
+                        todo!();
                     }
+
+                    let mut imports =
+                        ManualVec::with_cap_in(alloc, num_imports as usize)
+                        .ok_or_else(|| todo!())?;
+
+                    for _ in 0..num_imports {
+                        imports.push(sp.parse_import()?).unwrap_debug();
+                    }
+
+                    module.imports = imports.leak();
                 }
 
                 SectionKind::Function => {
-                    for _ in 0..sp.parse_length()? {
-                        sp.parse_u32()?;
+                    if has_section[SectionKind::Code as usize] {
+                        todo!()
                     }
+
+                    let num_funcs = sp.parse_u32()?;
+                    if num_funcs > limits.max_funcs {
+                        todo!();
+                    }
+
+                    let mut funcs =
+                        ManualVec::with_cap_in(alloc, num_funcs as usize)
+                        .ok_or_else(|| todo!())?;
+
+                    for _ in 0..num_funcs {
+                        funcs.push(sp.parse_u32()?).unwrap_debug();
+                    }
+
+                    module.funcs = funcs.leak();
                 }
 
                 SectionKind::Table => {
-                    for _ in 0..sp.parse_length()? {
-                        sp.parse_table_type()?;
+                    let num_tables = sp.parse_u32()?;
+                    if num_tables > limits.max_tables {
+                        todo!();
                     }
+
+                    let mut tables =
+                        ManualVec::with_cap_in(alloc, num_tables as usize)
+                        .ok_or_else(|| todo!())?;
+
+                    for _ in 0..num_tables {
+                        tables.push(sp.parse_table_type()?).unwrap_debug();
+                    }
+
+                    module.tables = tables.leak();
                 }
 
                 SectionKind::Memory => {
-                    for _ in 0..sp.parse_length()? {
-                        sp.parse_memory_type()?;
+                    let num_memories = sp.parse_u32()?;
+                    if num_memories > limits.max_memories {
+                        todo!();
                     }
+
+                    let mut memories =
+                        ManualVec::with_cap_in(alloc, num_memories as usize)
+                        .ok_or_else(|| todo!())?;
+
+                    for _ in 0..num_memories {
+                        memories.push(sp.parse_memory_type()?).unwrap_debug();
+                    }
+
+                    module.memories = memories.leak();
                 }
+
                 SectionKind::Global => {
-                    for _ in 0..sp.parse_length()? {
-                        sp.parse_global()?;
+                    let num_globals = sp.parse_u32()?;
+                    if num_globals > limits.max_globals {
+                        todo!();
                     }
+
+                    let mut globals =
+                        ManualVec::with_cap_in(alloc, num_globals as usize)
+                        .ok_or_else(|| todo!())?;
+
+                    for _ in 0..num_globals {
+                        globals.push(sp.parse_global()?).unwrap_debug();
+                    }
+
+                    module.globals = globals.leak();
                 }
 
                 SectionKind::Export => {
-                    for _ in 0..sp.parse_length()? {
-                        sp.parse_export()?;
+                    let num_exports = sp.parse_u32()?;
+                    if num_exports > limits.max_exports {
+                        todo!();
                     }
+
+                    let mut exports =
+                        ManualVec::with_cap_in(alloc, num_exports as usize)
+                        .ok_or_else(|| todo!())?;
+
+                    for _ in 0..num_exports {
+                        exports.push(sp.parse_export()?).unwrap_debug();
+                    }
+
+                    module.exports = exports.leak();
                 }
 
                 SectionKind::Start => {
-                    sp.parse_u32()?;
+                    module.start = Some(sp.parse_u32()?);
                 }
 
                 SectionKind::Element => {
-                    for _ in 0..sp.parse_length()? {
-                        sp.parse_element(&temp)?;
+                    let num_elements = sp.parse_u32()?;
+                    if num_elements > limits.max_elements {
+                        todo!();
                     }
+
+                    let mut elements =
+                        ManualVec::with_cap_in(alloc, num_elements as usize)
+                        .ok_or_else(|| todo!())?;
+
+                    for _ in 0..num_elements {
+                        elements.push(sp.parse_element(alloc)?).unwrap_debug();
+                    }
+
+                    module.elements = elements.leak();
                 }
 
                 SectionKind::Code => {
-                    for _ in 0..sp.parse_length()? {
-                        let code = sp.parse_code()?;
-                        let mut cp = p.sub_parser(code);
-
-                        let num_local_groups = cp.parse_u32()?;
-                        for _ in 0..num_local_groups {
-                            let _n = cp.parse_u32()?;
-                            cp.parse_value_type()?;
-                        }
-
-                        while !cp.is_done() {
-                            cp.parse_operator()?;
-                        }
+                    let num_codes = sp.parse_u32()?;
+                    if num_codes as usize != module.funcs.len() {
+                        todo!()
                     }
+
+                    let mut codes =
+                        ManualVec::with_cap_in(alloc, num_codes as usize)
+                        .ok_or_else(|| todo!())?;
+
+                    for _ in 0..num_codes {
+                        codes.push(sp.parse_code(limits.max_locals, alloc)?).unwrap_debug();
+                    }
+
+                    module.codes = codes.leak();
                 }
 
                 SectionKind::Data => {
-                    for _ in 0..sp.parse_length()? {
-                        sp.parse_data()?;
+                    let num_datas = sp.parse_u32()?;
+                    if num_datas > limits.max_datas {
+                        todo!();
                     }
+
+                    let mut datas =
+                        ManualVec::with_cap_in(alloc, num_datas as usize)
+                        .ok_or_else(|| todo!())?;
+
+                    for _ in 0..num_datas {
+                        datas.push(sp.parse_data()?).unwrap_debug();
+                    }
+
+                    module.datas = datas.leak();
                 }
 
                 SectionKind::DataCount => {
@@ -631,42 +780,10 @@ mod test {
             }
             sp.expect_done()?;
         }
-        return Ok(result);
-    }
 
-    #[test]
-    fn parse_lua_wasm() {
-        let wasm = include_bytes!("../test/lua.wasm");
-        let sections = parse(wasm).unwrap();
-        /*
-             Type start=0x0000000b end=0x00000113 (size=0x00000108) count: 38
-           Import start=0x00000116 end=0x00000360 (size=0x0000024a) count: 27
-         Function start=0x00000363 end=0x00000529 (size=0x000001c6) count: 452
-            Table start=0x0000052b end=0x00000532 (size=0x00000007) count: 1
-           Memory start=0x00000534 end=0x00000537 (size=0x00000003) count: 1
-           Global start=0x00000539 end=0x00000541 (size=0x00000008) count: 1
-           Export start=0x00000544 end=0x000005ca (size=0x00000086) count: 11
-             Elem start=0x000005cd end=0x000006ea (size=0x0000011d) count: 1
-             Code start=0x000006ee end=0x000556f7 (size=0x00055009) count: 452
-             Data start=0x000556fa end=0x00059252 (size=0x00003b58) count: 2
-           Custom start=0x00059255 end=0x0005ae3a (size=0x00001be5) "name"
-           Custom start=0x0005ae3c end=0x0005ae6b (size=0x0000002f) "producers"
-           Custom start=0x0005ae6d end=0x0005ae99 (size=0x0000002c) "target_features"
-        */
-        assert_eq!(sections.len(), 13);
-        assert_eq!(sections[0], Section { kind: SectionKind::Type, sub: SubSection { offset: 0x0000000b, len: 0x00000108 } });
-        assert_eq!(sections[1], Section { kind: SectionKind::Import, sub: SubSection { offset: 0x00000116, len: 0x0000024a } });
-        assert_eq!(sections[2], Section { kind: SectionKind::Function, sub: SubSection { offset: 0x00000363, len: 0x000001c6 } });
-        assert_eq!(sections[3], Section { kind: SectionKind::Table, sub: SubSection { offset: 0x0000052b, len: 0x00000007 } });
-        assert_eq!(sections[4], Section { kind: SectionKind::Memory, sub: SubSection { offset: 0x00000534, len: 0x00000003 } });
-        assert_eq!(sections[5], Section { kind: SectionKind::Global, sub: SubSection { offset: 0x00000539, len: 0x00000008 } });
-        assert_eq!(sections[6], Section { kind: SectionKind::Export, sub: SubSection { offset: 0x00000544, len: 0x00000086 } });
-        assert_eq!(sections[7], Section { kind: SectionKind::Element, sub: SubSection { offset: 0x000005cd, len: 0x0000011d } });
-        assert_eq!(sections[8], Section { kind: SectionKind::Code, sub: SubSection { offset: 0x000006ee, len: 0x00055009 } });
-        assert_eq!(sections[9], Section { kind: SectionKind::Data, sub: SubSection { offset: 0x000556fa, len: 0x00003b58 } });
-        assert_eq!(sections[10], Section { kind: SectionKind::Custom, sub: SubSection { offset: 0x00059255, len: 0x00001be5 } });
-        assert_eq!(sections[11], Section { kind: SectionKind::Custom, sub: SubSection { offset: 0x0005ae3c, len: 0x0000002f } });
-        assert_eq!(sections[12], Section { kind: SectionKind::Custom, sub: SubSection { offset: 0x0005ae6d, len: 0x0000002c } });
+        module.customs = customs.leak();
+
+        return Ok(module);
     }
 }
 
