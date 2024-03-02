@@ -2,6 +2,7 @@
 - todo:
     - rewrite:
         - parse `br_table`, pass something that iterates again.
+        - validator as visitor.
     - merge interp stuff into `Store`.
     - `MemoryCtx`.
         - basically just a pointer to `StoreMemory`.

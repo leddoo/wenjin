@@ -1,6 +1,7 @@
+use sti::traits::UnwrapDebug;
 use sti::reader::Reader;
 use sti::arena::Arena;
-use sti::vec::Vec;
+use sti::manual_vec::ManualVec;
 
 use crate::leb128;
 use crate::{ValueType, RefType, FuncType, BlockType, Limits, TableType, MemoryType, GlobalType};
@@ -109,15 +110,15 @@ impl<'a> Parser<'a> {
         self.reader.expect(0x60).map_err(|_| todo!())?;
 
         let num_params = self.parse_length()?;
-        let mut params = Vec::with_cap_in(alloc, num_params);
+        let mut params = ManualVec::with_cap_in(alloc, num_params).ok_or_else(|| todo!())?;
         for _ in 0..num_params {
-            params.push(self.parse_value_type()?);
+            params.push(self.parse_value_type()?).unwrap_debug();
         }
 
         let num_rets = self.parse_length()?;
-        let mut rets = Vec::with_cap_in(alloc, num_rets);
+        let mut rets = ManualVec::with_cap_in(alloc, num_rets).ok_or_else(|| todo!())?;
         for _ in 0..num_rets {
-            rets.push(self.parse_value_type()?);
+            rets.push(self.parse_value_type()?).unwrap_debug();
         }
 
         return Ok(FuncType { params: params.leak(), rets: rets.leak() });
@@ -255,9 +256,9 @@ impl<'a> Parser<'a> {
                 };
 
                 let num_values = self.parse_length()?;
-                let mut values = Vec::with_cap_in(alloc, num_values);
+                let mut values = ManualVec::with_cap_in(alloc, num_values).ok_or_else(|| todo!())?;
                 for _ in 0..num_values {
-                    values.push(self.parse_u32()?);
+                    values.push(self.parse_u32()?).unwrap_debug();
                 }
 
                 Element {
