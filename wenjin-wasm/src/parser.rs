@@ -1,41 +1,323 @@
 use sti::reader::Reader;
+use sti::arena::Arena;
+use sti::vec::Vec;
 
-use crate::{BlockType, leb128};
-use crate::operator::OperatorVisitor;
+use crate::leb128;
+use crate::{ValueType, RefType, FuncType, BlockType, Limits, TableType, MemoryType, GlobalType};
+use crate::{Import, ImportKind, Global, Export, ExportKind, Element, ElementKind, Data, DataKind};
+use crate::{SubSection, Section, SectionKind, CustomSection};
+use crate::ConstExpr;
+use crate::operator::{Operator, OperatorVisitor, NewOperator};
 
 
+#[derive(Clone, Copy, Debug)]
 pub struct ParseError {
     pub offset: usize,
     pub kind: ParseErrorKind,
 }
 
+#[derive(Clone, Copy, Debug)]
 pub enum ParseErrorKind {
 }
 
 type Result<T> = core::result::Result<T, ParseError>;
 
 
+#[derive(Clone)]
 pub struct Parser<'a> {
-    reader: Reader<'a, u8>,
-    input_begin: *const u8,
+    pub reader: Reader<'a, u8>,
 }
 
 impl<'a> Parser<'a> {
-    fn next(&mut self) -> Result<u8> {
+    pub fn new(reader: Reader<'a, u8>) -> Self {
+        Self { reader }
+    }
+
+    #[inline]
+    pub fn next(&mut self) -> Result<u8> {
         return self.reader.next().ok_or_else(||
             todo!());
     }
 
-    fn parse_u32(&mut self) -> Result<u32> {
+    #[inline]
+    pub fn is_done(&self) -> bool {
+        self.reader.is_empty()
+    }
+
+    pub fn expect_done(&self) -> Result<()> {
+        if self.reader.len() != 0 {
+            todo!()
+        }
+        return Ok(());
+    }
+
+    #[inline]
+    pub fn parse_i32(&mut self) -> Result<i32> {
+        leb128::decode_i32(&mut self.reader).map_err(|_|
+            todo!())
+    }
+
+    #[inline]
+    pub fn parse_i64(&mut self) -> Result<i64> {
+        leb128::decode_i64(&mut self.reader).map_err(|_|
+            todo!())
+    }
+
+    #[inline]
+    pub fn parse_f32(&mut self) -> Result<f32> {
+        let bytes = self.reader.next_array::<4>().ok_or_else(|| todo!())?;
+        return Ok(f32::from_le_bytes(bytes));
+    }
+
+    #[inline]
+    pub fn parse_f64(&mut self) -> Result<f64> {
+        let bytes = self.reader.next_array::<8>().ok_or_else(|| todo!())?;
+        return Ok(f64::from_le_bytes(bytes));
+    }
+
+    #[inline]
+    pub fn parse_u32(&mut self) -> Result<u32> {
         leb128::decode_u32(&mut self.reader).map_err(|_|
             todo!())
     }
 
-    fn parse_block_type(&mut self) -> Result<BlockType> {
-        todo!()
+    #[inline]
+    pub fn parse_length(&mut self) -> Result<usize> {
+        return Ok(self.parse_u32()? as usize);
     }
 
-    fn parse_operator<V: OperatorVisitor>(&mut self, mut v: V) -> Result<V::Output> {
+    pub fn parse_string(&mut self) -> Result<&'a str> {
+        let len = self.parse_length()?;
+        let bytes = self.reader.next_n(len).ok_or_else(|| todo!())?;
+        let string = core::str::from_utf8(bytes).map_err(|_| todo!())?;
+        return Ok(string);
+    }
+
+    pub fn parse_value_type(&mut self) -> Result<ValueType> {
+        let at = self.next()?;
+        let ty = ValueType::from_u8(at).ok_or_else(|| todo!())?;
+        return Ok(ty);
+    }
+
+    pub fn parse_ref_type(&mut self) -> Result<RefType> {
+        let at = self.next()?;
+        let ty = RefType::from_u8(at).ok_or_else(|| todo!())?;
+        return Ok(ty);
+    }
+
+    pub fn parse_func_type<'out>(&mut self, alloc: &'out Arena) -> Result<FuncType<'out>> {
+        self.reader.expect(0x60).map_err(|_| todo!())?;
+
+        let num_params = self.parse_length()?;
+        let mut params = Vec::with_cap_in(alloc, num_params);
+        for _ in 0..num_params {
+            params.push(self.parse_value_type()?);
+        }
+
+        let num_rets = self.parse_length()?;
+        let mut rets = Vec::with_cap_in(alloc, num_rets);
+        for _ in 0..num_rets {
+            rets.push(self.parse_value_type()?);
+        }
+
+        return Ok(FuncType { params: params.leak(), rets: rets.leak() });
+    }
+
+    pub fn parse_block_type(&mut self) -> Result<BlockType> {
+        let ty = leb128::decode_i64(&mut self.reader).map_err(|_|
+            todo!())?;
+
+        // @todo: explain this.
+        if ty < 0 {
+            let high_bits = !0x7f;
+            if ty & high_bits != high_bits {
+                todo!()
+            }
+            let ty = (ty & !high_bits) as u64 as u8;
+
+            if ty == 0x40 {
+                return Ok(BlockType::Unit);
+            }
+
+            return Ok(BlockType::Value(ValueType::from_u8(ty).ok_or_else(|| todo!())?));
+        }
+        else {
+            let ty = ty.try_into().map_err(|_| todo!())?;
+            return Ok(BlockType::Func(ty));
+        }
+    }
+
+    pub fn parse_limits(&mut self) -> Result<Limits> {
+        return Ok(match self.next()? {
+            0x00 => Limits { min: self.parse_u32()?, max: None },
+            0x01 => Limits { min: self.parse_u32()?, max: Some(self.parse_u32()?) },
+
+            _ => todo!()
+        });
+    }
+
+    pub fn parse_table_type(&mut self) -> Result<TableType> {
+        let ty = self.parse_ref_type()?;
+        let limits = self.parse_limits()?;
+        return Ok(TableType { ty, limits });
+    }
+
+    pub fn parse_memory_type(&mut self) -> Result<MemoryType> {
+        return Ok(MemoryType { limits: self.parse_limits()? });
+    }
+
+    pub fn parse_global_type(&mut self) -> Result<GlobalType> {
+        let ty = self.parse_value_type()?;
+        let mutt = match self.next()? {
+            0 => false,
+            1 => true,
+
+            _ => todo!(),
+        };
+        return Ok(GlobalType { ty, mutt });
+    }
+
+
+    pub fn parse_module_header(&mut self) -> Result<()> {
+        self.reader.expect_n(b"\0asm").map_err(|_| todo!())?;
+        self.reader.expect_n(&[1, 0, 0, 0]).map_err(|_| todo!())?;
+        return Ok(())
+    }
+
+    pub fn parse_sub_section(&mut self) -> Result<SubSection> {
+        let len = self.parse_length()?;
+        let offset = self.reader.offset();
+        self.reader.next_n(len).ok_or_else(|| todo!())?;
+        return Ok(SubSection { offset, len });
+    }
+
+    pub fn parse_section(&mut self) -> Result<Section> {
+        let kind = self.next()?;
+        let kind = SectionKind::from_u8(kind).ok_or_else(|| todo!())?;
+        let sub = self.parse_sub_section()?;
+        return Ok(Section { kind, sub });
+    }
+
+    pub fn sub_parser(&self, sub: SubSection) -> Self {
+        let end = sub.offset + sub.len;
+        let mut reader = Reader::new(&self.reader.original_slice()[..end]);
+        reader.set_offset(sub.offset);
+        Self { reader }
+    }
+
+    pub fn parse_custom_section(&mut self) -> Result<CustomSection<'a>> {
+        let name = self.parse_string()?;
+        let data = self.reader.as_slice();
+        self.reader.consume(data.len());
+        return Ok(CustomSection { name, data });
+    }
+
+    pub fn parse_import(&mut self) -> Result<Import<'a>> {
+        let module = self.parse_string()?;
+        let name = self.parse_string()?;
+
+        let kind = match self.next()? {
+            0x00 => ImportKind::Func(self.parse_u32()?),
+            0x01 => ImportKind::Table(self.parse_table_type()?),
+            0x02 => ImportKind::Memory(self.parse_memory_type()?),
+            0x03 => ImportKind::Global(self.parse_global_type()?),
+
+            _ => todo!()
+        };
+
+        return Ok(Import { module, name, kind });
+    }
+
+    pub fn parse_global(&mut self) -> Result<Global> {
+        let ty = self.parse_global_type()?;
+        let init = self.parse_const_expr()?;
+        return Ok(Global { ty, init });
+    }
+
+    pub fn parse_export(&mut self) -> Result<Export<'a>> {
+        let name = self.parse_string()?;
+        let kind = match self.next()? {
+            0x00 => ExportKind::Func(self.parse_u32()?),
+            0x01 => ExportKind::Table(self.parse_u32()?),
+            0x02 => ExportKind::Memory(self.parse_u32()?),
+            0x03 => ExportKind::Global(self.parse_u32()?),
+
+            _ => todo!()
+        };
+        return Ok(Export { name, kind });
+    }
+
+    pub fn parse_element<'out>(&mut self, alloc: &'out Arena) -> Result<Element<'out>> {
+        return Ok(match self.parse_u32()? {
+            0 => {
+                let ConstExpr::I32(offset) = self.parse_const_expr()? else {
+                    todo!()
+                };
+
+                let num_values = self.parse_length()?;
+                let mut values = Vec::with_cap_in(alloc, num_values);
+                for _ in 0..num_values {
+                    values.push(self.parse_u32()?);
+                }
+
+                Element {
+                    ty: ValueType::FuncRef,
+                    kind: ElementKind::Active { table: 0, offset: offset as u32 },
+                    values: values.leak(),
+                }
+            }
+
+            _ => todo!(),
+        });
+    }
+
+    pub fn parse_code(&mut self) -> Result<SubSection> {
+        self.parse_sub_section()
+    }
+
+    pub fn parse_data(&mut self) -> Result<Data<'a>> {
+        return Ok(match self.parse_u32()? {
+            0 => {
+                let offset = self.parse_const_expr()?;
+                let ConstExpr::I32(offset) = offset else {
+                    todo!()
+                };
+
+                let len = self.parse_length()?;
+                let values = self.reader.next_n(len).ok_or_else(|| todo!())?;
+
+                let kind = DataKind::Active { mem: 0, offset: offset as u32 };
+
+                Data { kind, values }
+            }
+
+            _ => todo!()
+        });
+    }
+
+
+    pub fn parse_const_expr(&mut self) -> Result<ConstExpr> {
+        let result = match self.parse_operator()? {
+            Operator::I32Const { value } => ConstExpr::I32(value),
+            Operator::I64Const { value } => ConstExpr::I64(value),
+            Operator::F32Const { value } => ConstExpr::F32(value),
+            Operator::F64Const { value } => ConstExpr::F64(value),
+
+            _ => todo!(),
+        };
+
+        let Operator::End = self.parse_operator()? else {
+            todo!()
+        };
+
+        return Ok(result);
+    }
+
+    pub fn parse_operator(&mut self) -> Result<Operator> {
+        self.parse_operator_with(NewOperator)
+    }
+
+    pub fn parse_operator_with<V: OperatorVisitor>(&mut self, mut v: V) -> Result<V::Output> {
         use crate::opcode::*;
 
         let at = self.next()?;
@@ -49,7 +331,15 @@ impl<'a> Parser<'a> {
             END             => v.visit_end(),
             BR              => v.visit_br(self.parse_u32()?),
             BR_IF           => v.visit_br_if(self.parse_u32()?),
-            BR_TABLE        => todo!(),
+            BR_TABLE => {
+                let num_labels = self.parse_u32()?;
+                for _ in 0..num_labels {
+                    self.parse_u32()?;
+                }
+                self.parse_u32()?;
+
+                v.visit_br_table(())
+            }
             RETURN          => v.visit_return(),
             CALL            => v.visit_call(self.parse_u32()?),
             CALL_INDIRECT   => v.visit_call_indirect(self.parse_u32()?, self.parse_u32()?),
@@ -88,10 +378,10 @@ impl<'a> Parser<'a> {
             I64_STORE32     => v.visit_i64_store32(self.parse_u32()?, self.parse_u32()?),
             MEMORY_SIZE     => v.visit_memory_size(self.parse_u32()?),
             MEMORY_GROW     => v.visit_memory_size(self.parse_u32()?),
-            I32_CONST       => todo!(),
-            I64_CONST       => todo!(),
-            F32_CONST       => todo!(),
-            F64_CONST       => todo!(),
+            I32_CONST       => v.visit_i32_const(self.parse_i32()?),
+            I64_CONST       => v.visit_i64_const(self.parse_i64()?),
+            F32_CONST       => v.visit_f32_const(self.parse_f32()?),
+            F64_CONST       => v.visit_f64_const(self.parse_f64()?),
             I32_EQZ         => v.visit_i32_eqz(),
             I32_EQ          => v.visit_i32_eq(),
             I32_NE          => v.visit_i32_ne(),
@@ -234,6 +524,148 @@ impl<'a> Parser<'a> {
                 todo!()
             }
         })
+    }
+}
+
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn parse(wasm: &[u8]) -> Result<Vec<Section>> {
+        let mut p = Parser::new(Reader::new(wasm));
+        p.parse_module_header()?;
+
+        let temp = Arena::new();
+
+        let mut result = Vec::new();
+
+        while !p.is_done() {
+            let section = p.parse_section()?;
+            result.push(section);
+
+            let mut sp = p.sub_parser(section.sub);
+            match section.kind {
+                SectionKind::Custom => {
+                    sp.parse_custom_section()?;
+                }
+
+                SectionKind::Type => {
+                    for _ in 0..sp.parse_length()? {
+                        sp.parse_func_type(&temp)?;
+                    }
+                }
+
+                SectionKind::Import => {
+                    for _ in 0..sp.parse_length()? {
+                        sp.parse_import()?;
+                    }
+                }
+
+                SectionKind::Function => {
+                    for _ in 0..sp.parse_length()? {
+                        sp.parse_u32()?;
+                    }
+                }
+
+                SectionKind::Table => {
+                    for _ in 0..sp.parse_length()? {
+                        sp.parse_table_type()?;
+                    }
+                }
+
+                SectionKind::Memory => {
+                    for _ in 0..sp.parse_length()? {
+                        sp.parse_memory_type()?;
+                    }
+                }
+                SectionKind::Global => {
+                    for _ in 0..sp.parse_length()? {
+                        sp.parse_global()?;
+                    }
+                }
+
+                SectionKind::Export => {
+                    for _ in 0..sp.parse_length()? {
+                        sp.parse_export()?;
+                    }
+                }
+
+                SectionKind::Start => {
+                    sp.parse_u32()?;
+                }
+
+                SectionKind::Element => {
+                    for _ in 0..sp.parse_length()? {
+                        sp.parse_element(&temp)?;
+                    }
+                }
+
+                SectionKind::Code => {
+                    for _ in 0..sp.parse_length()? {
+                        let code = sp.parse_code()?;
+                        let mut cp = p.sub_parser(code);
+
+                        let num_local_groups = cp.parse_u32()?;
+                        for _ in 0..num_local_groups {
+                            let _n = cp.parse_u32()?;
+                            cp.parse_value_type()?;
+                        }
+
+                        while !cp.is_done() {
+                            cp.parse_operator()?;
+                        }
+                    }
+                }
+
+                SectionKind::Data => {
+                    for _ in 0..sp.parse_length()? {
+                        sp.parse_data()?;
+                    }
+                }
+
+                SectionKind::DataCount => {
+                    sp.parse_u32()?;
+                }
+            }
+            sp.expect_done()?;
+        }
+        return Ok(result);
+    }
+
+    #[test]
+    fn parse_lua_wasm() {
+        let wasm = include_bytes!("../test/lua.wasm");
+        let sections = parse(wasm).unwrap();
+        /*
+             Type start=0x0000000b end=0x00000113 (size=0x00000108) count: 38
+           Import start=0x00000116 end=0x00000360 (size=0x0000024a) count: 27
+         Function start=0x00000363 end=0x00000529 (size=0x000001c6) count: 452
+            Table start=0x0000052b end=0x00000532 (size=0x00000007) count: 1
+           Memory start=0x00000534 end=0x00000537 (size=0x00000003) count: 1
+           Global start=0x00000539 end=0x00000541 (size=0x00000008) count: 1
+           Export start=0x00000544 end=0x000005ca (size=0x00000086) count: 11
+             Elem start=0x000005cd end=0x000006ea (size=0x0000011d) count: 1
+             Code start=0x000006ee end=0x000556f7 (size=0x00055009) count: 452
+             Data start=0x000556fa end=0x00059252 (size=0x00003b58) count: 2
+           Custom start=0x00059255 end=0x0005ae3a (size=0x00001be5) "name"
+           Custom start=0x0005ae3c end=0x0005ae6b (size=0x0000002f) "producers"
+           Custom start=0x0005ae6d end=0x0005ae99 (size=0x0000002c) "target_features"
+        */
+        assert_eq!(sections.len(), 13);
+        assert_eq!(sections[0], Section { kind: SectionKind::Type, sub: SubSection { offset: 0x0000000b, len: 0x00000108 } });
+        assert_eq!(sections[1], Section { kind: SectionKind::Import, sub: SubSection { offset: 0x00000116, len: 0x0000024a } });
+        assert_eq!(sections[2], Section { kind: SectionKind::Function, sub: SubSection { offset: 0x00000363, len: 0x000001c6 } });
+        assert_eq!(sections[3], Section { kind: SectionKind::Table, sub: SubSection { offset: 0x0000052b, len: 0x00000007 } });
+        assert_eq!(sections[4], Section { kind: SectionKind::Memory, sub: SubSection { offset: 0x00000534, len: 0x00000003 } });
+        assert_eq!(sections[5], Section { kind: SectionKind::Global, sub: SubSection { offset: 0x00000539, len: 0x00000008 } });
+        assert_eq!(sections[6], Section { kind: SectionKind::Export, sub: SubSection { offset: 0x00000544, len: 0x00000086 } });
+        assert_eq!(sections[7], Section { kind: SectionKind::Element, sub: SubSection { offset: 0x000005cd, len: 0x0000011d } });
+        assert_eq!(sections[8], Section { kind: SectionKind::Code, sub: SubSection { offset: 0x000006ee, len: 0x00055009 } });
+        assert_eq!(sections[9], Section { kind: SectionKind::Data, sub: SubSection { offset: 0x000556fa, len: 0x00003b58 } });
+        assert_eq!(sections[10], Section { kind: SectionKind::Custom, sub: SubSection { offset: 0x00059255, len: 0x00001be5 } });
+        assert_eq!(sections[11], Section { kind: SectionKind::Custom, sub: SubSection { offset: 0x0005ae3c, len: 0x0000002f } });
+        assert_eq!(sections[12], Section { kind: SectionKind::Custom, sub: SubSection { offset: 0x0005ae6d, len: 0x0000002c } });
     }
 }
 

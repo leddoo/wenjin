@@ -15,13 +15,6 @@ pub type MemoryIdx = u32;
 pub type TableIdx = u32;
 
 
-#[derive(Clone, Copy, Debug)]
-pub struct Limits {
-    pub min: u32,
-    pub max: Option<u32>,
-}
-
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ValueType {
     I32,
@@ -75,12 +68,31 @@ impl ValueType {
 
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RefType {
+    FuncRef,
+    ExternRef,
+}
+
+impl RefType {
+    pub fn from_u8(value: u8) -> Option<RefType> {
+        Some(match value {
+            0x70 => RefType::FuncRef,
+            0x6f => RefType::ExternRef,
+
+            _ => return None,
+        })
+    }
+}
+
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BlockType {
     Unit,
     Value(ValueType),
     Func(TypeIdx),
 }
 
+/*
 impl BlockType {
     pub fn begin_types<'m>(self, module: &Module<'m>) -> &'m [ValueType] {
         match self {
@@ -98,6 +110,7 @@ impl BlockType {
         }
     }
 }
+*/
 
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -108,8 +121,15 @@ pub struct FuncType<'a> {
 
 
 #[derive(Clone, Copy, Debug)]
+pub struct Limits {
+    pub min: u32,
+    pub max: Option<u32>,
+}
+
+
+#[derive(Clone, Copy, Debug)]
 pub struct TableType {
-    pub ty: ValueType,
+    pub ty: RefType,
     pub limits: Limits,
 }
 
@@ -127,39 +147,28 @@ pub struct GlobalType {
 }
 
 
-#[derive(Clone, Copy, Debug, Default)]
-pub struct Imports<'a> {
-    pub imports: &'a [Import<'a>],
-
-    pub funcs:    &'a [TypeIdx],
-    pub memories: &'a [MemoryType],
-    pub globals:  &'a [GlobalType],
-    pub tables:   &'a [TableType],
-}
-
 #[derive(Clone, Copy, Debug)]
 pub struct Import<'a> {
     pub module: &'a str,
     pub name: &'a str,
     pub kind: ImportKind,
-    pub index: u32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug)]
 pub enum ImportKind {
-    Func,
-    Memory,
-    Global,
-    Table,
+    Func(TypeIdx),
+    Memory(MemoryType),
+    Global(GlobalType),
+    Table(TableType),
 }
 
 
 #[derive(Clone, Copy, Debug)]
 pub enum ConstExpr {
-    I32 (i32),
-    I64 (i64),
-    F32 (f32),
-    F64 (f64),
+    I32(i32),
+    I64(i64),
+    F32(f32),
+    F64(f64),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -172,11 +181,11 @@ pub struct Global {
 #[derive(Clone, Copy, Debug)]
 pub struct Export<'a> {
     pub name: &'a str,
-    pub data: ExportData,
+    pub kind: ExportKind,
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum ExportData {
+pub enum ExportKind {
     Func(FuncIdx),
     Table(TableIdx),
     Memory(MemoryIdx),
@@ -184,17 +193,18 @@ pub enum ExportData {
 }
 
 
+// @todo: support refs.
 #[derive(Clone, Copy, Debug)]
-pub struct Elem<'a> {
+pub struct Element<'a> {
     pub ty: ValueType,
-    pub kind: ElemKind,
+    pub kind: ElementKind,
     pub values: &'a [u32],
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum ElemKind {
+pub enum ElementKind {
     Passive,
-    Active { tab_idx: u32, offset: u32 },
+    Active { table: TableIdx, offset: u32 },
     Declarative,
 }
 
@@ -208,10 +218,11 @@ pub struct Data<'a> {
 #[derive(Clone, Copy, Debug)]
 pub enum DataKind {
     Passive,
-    Active { mem_idx: u32, offset: u32 },
+    Active { mem: MemoryIdx, offset: u32 },
 }
 
 
+/*
 #[derive(Clone, Debug, Default)]
 pub struct Module<'a> {
     pub imports: Imports<'a>,
@@ -227,5 +238,68 @@ pub struct Module<'a> {
     pub elems:    &'a [Elem<'a>],
     pub datas:    &'a [Data<'a>],
 }
+*/
+
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SubSection {
+    pub offset: usize,
+    pub len: usize,
+}
+
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Section {
+    pub kind: SectionKind,
+    pub sub: SubSection,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SectionKind {
+    Custom,
+    Type,
+    Import,
+    Function,
+    Table,
+    Memory,
+    Global,
+    Export,
+    Start,
+    Element,
+    Code,
+    Data,
+    DataCount,
+}
+
+impl SectionKind {
+    pub const COUNT: usize = 13;
+
+    pub fn from_u8(value: u8) -> Option<SectionKind> {
+        use SectionKind::*;
+        Some(match value {
+             0 => Custom,
+             1 => Type,
+             2 => Import,
+             3 => Function,
+             4 => Table,
+             5 => Memory,
+             6 => Global,
+             7 => Export,
+             8 => Start,
+             9 => Element,
+            10 => Code,
+            11 => Data,
+            12 => DataCount,
+
+            _ => return None,
+        })
+    }
+}
+
+pub struct CustomSection<'a> {
+    pub name: &'a str,
+    pub data: &'a [u8],
+}
+
 
 

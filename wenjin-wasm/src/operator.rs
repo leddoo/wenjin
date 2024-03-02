@@ -214,3 +214,19 @@ macro_rules! operator_visitor {
 for_each_operator!(operator_visitor);
 
 
+pub struct NewOperator;
+
+macro_rules! new_operator {
+    ($($op:ident $({ $($arg:ident: $argty:ty),* })? => $visitor:ident)*) => {
+        impl OperatorVisitor for NewOperator {
+            type Output = Operator;
+
+            $(fn $visitor(&mut self, $($($arg: $argty),*)?) -> Self::Output {
+                Operator::$op $({ $($arg),* })?
+            })*
+        }
+    };
+}
+for_each_operator!(new_operator);
+
+
