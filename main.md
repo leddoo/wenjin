@@ -1,12 +1,20 @@
 
 - todo:
     - rewrite:
-        - vm.
-            - state.
-            - loop.
-        - parse `br_table`, pass something that iterates again.
-        - table/global api.
-            - kinda want typed api for globals (maybe also mut)?
+        - store the funcs.
+        - store the module (incl func ids).
+        - wasm types & typed func.
+        - create instance.
+            - module ref.
+            - funcs refs array.
+        - run.
+            - call checks current instance func refs array.
+        - rest of the owl:
+            - globals.
+            - data.
+            - tables.
+            - elements.
+            - `br_table`.
     - merge interp stuff into `Store`.
     - `MemoryCtx`.
         - basically just a pointer to `StoreMemory`.
