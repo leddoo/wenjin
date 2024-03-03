@@ -1,6 +1,6 @@
 use sti::arena::Arena;
 
-use wenjin_wasm::*;
+use wenjin_wasm::{*, operator::MkOperator};
 
 
 fn parse_and_validate<'a>(wasm: &'a [u8], alloc: &'a Arena) -> Module<'a> {
@@ -10,10 +10,15 @@ fn parse_and_validate<'a>(wasm: &'a [u8], alloc: &'a Arena) -> Module<'a> {
     for (i, code) in module.codes.iter().enumerate() {
         let mut p = Parser::from_sub_section(wasm, code.expr);
 
-        validator.begin_func(module.funcs[i]);
+        println!("func {}", i + module.imports.funcs.len());
+
+        validator.begin_func(module.funcs[i], code.locals).unwrap();
 
         while !p.is_done() {
-            p.parse_operator_with(&mut validator).unwrap().unwrap();
+            let (op, valid) = p.parse_operator_with((MkOperator, &mut validator)).unwrap();
+            println!("{:?}", op);
+            println!("{:?}", validator.stack());
+            valid.unwrap();
         }
     }
 

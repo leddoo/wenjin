@@ -14,9 +14,9 @@ pub const PAGE_SIZE: usize = 64*1024;
 
 pub type TypeIdx = u32;
 pub type FuncIdx = u32;
-pub type GlobalIdx = u32;
-pub type MemoryIdx = u32;
 pub type TableIdx = u32;
+pub type MemoryIdx = u32;
+pub type GlobalIdx = u32;
 
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

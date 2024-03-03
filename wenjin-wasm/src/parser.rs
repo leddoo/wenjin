@@ -9,7 +9,7 @@ use crate::{Import, ImportKind, Imports, Global, Export, ExportKind, Element, El
 use crate::{SubSection, Section, SectionKind, CustomSection};
 use crate::ConstExpr;
 use crate::{ModuleLimits, Module};
-use crate::operator::{Operator, OperatorVisitor, NewOperator};
+use crate::operator::{Operator, OperatorVisitor, MkOperator};
 
 
 #[derive(Clone, Copy, Debug)]
@@ -348,7 +348,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_operator(&mut self) -> Result<Operator> {
-        self.parse_operator_with(NewOperator)
+        self.parse_operator_with(MkOperator)
     }
 
     pub fn parse_operator_with<V: OperatorVisitor>(&mut self, mut v: V) -> Result<V::Output> {

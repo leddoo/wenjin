@@ -1,7 +1,7 @@
 
 - todo:
     - rewrite:
-        - assemble locals in validator.
+        - remove `Validator::frame`, `fn is_unreachable` -> can opt.
         - the rest of the validator owl.
         - parse `br_table`, pass something that iterates again.
     - merge interp stuff into `Store`.
