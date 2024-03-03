@@ -21,6 +21,7 @@ pub struct Validator<'a> {
 
     locals: ManualVec<ValueType>,
     stack: ManualVec<ValueType>,
+    max_stack: u32,
     frames: ManualVec<ControlFrame>,
 }
 
@@ -49,6 +50,7 @@ impl<'a> Validator<'a> {
             module,
             locals: ManualVec::new(),
             stack: ManualVec::new(),
+            max_stack: 0,
             frames: ManualVec::new(),
         }
     }
@@ -74,6 +76,7 @@ impl<'a> Validator<'a> {
         }
 
         self.stack.truncate(0);
+        self.max_stack = 0;
 
         self.frames.truncate(0);
         self.frames.push_or_alloc(ControlFrame {
@@ -104,6 +107,7 @@ impl<'a> Validator<'a> {
             }
 
             self.stack.push_or_alloc(ty).map_err(|_| todo!())?;
+            self.max_stack = self.max_stack.max(self.stack.len() as u32);
         }
         return Ok(());
     }

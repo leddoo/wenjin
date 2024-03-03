@@ -25,7 +25,7 @@ use wasm::{ValueType, BlockType, TypeIdx, FuncIdx, TableIdx, MemoryIdx, GlobalId
 */
 
 
-struct Compiler {
+pub(crate) struct Compiler {
     code: ManualVec<u8>,
     frames: ManualVec<Frame>,
     oom: bool,
@@ -49,7 +49,7 @@ struct Frame {
 }
 
 impl Compiler {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             code: ManualVec::new(),
             frames: ManualVec::new(),
@@ -57,7 +57,7 @@ impl Compiler {
         }
     }
 
-    fn begin_func(&mut self) {
+    pub fn begin_func(&mut self) {
         self.code.clear();
         self.frames.clear();
     }
@@ -168,7 +168,10 @@ impl wasm::OperatorVisitor for Compiler {
     }
 
     fn visit_end(&mut self) -> Self::Output {
-        let frame = self.frames.pop().expect("invalid wasm");
+        let Some(frame) = self.frames.pop() else {
+            self.push_byte(opcode::RETURN);
+            return;
+        };
 
         let offset = self.code.len() as u32;
 

@@ -245,7 +245,7 @@ for_each_operator!(chain_operator_visitor);
 
 macro_rules! andthen_operator_visitor {
     ($($op:ident $({ $($arg:ident: $argty:ty),* })? => $visitor:ident)*) => {
-        pub struct AndThenOp<V1, V2>(V1, V2);
+        pub struct AndThenOp<V1, V2>(pub V1, pub V2);
 
         impl<R1, E1, V1: OperatorVisitor<Output=Result<R1, E1>>, V2: OperatorVisitor> OperatorVisitor for AndThenOp<V1, V2> {
             type Output = Result<(R1, V2::Output), E1>;

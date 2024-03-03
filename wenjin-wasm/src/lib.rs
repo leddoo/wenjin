@@ -357,6 +357,13 @@ impl ModuleLimits {
     };
 }
 
+impl Default for ModuleLimits {
+    #[inline]
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
 
 #[derive(Default)]
 pub struct Module<'a> {
