@@ -2,31 +2,116 @@ use sti::manual_vec::ManualVec;
 
 use wasm::{ValueType, BlockType, TypeIdx, FuncIdx, TableIdx, MemoryIdx, GlobalIdx, opcode};
 
+/*
+- instructions:
+    - most instructions are mapped 1:1 for ease of debugging.
+    - `if` & `loop` have an additional `br` instruction.
+    - all `u32` operands are stored in 4 byte, native endian format.
+    - jumps: see below.
+
+- jumps:
+    - jumps are relative i32s.
+      the jump target is the address of the i32 itself
+      plus the value of the i32.
+    - when compiling a jump to a known label,
+      the relative i32 is computed and written immediately.
+    - when compiling a jump to an unknown label,
+      a linked list of jumps to that label is maintained
+      and patched once the target is known.
+        - the head of the list is stored on the frame.
+        - the head and each element of the list is either u32::MAX
+          (indicating the end of the linked list)
+          or the absolute offset of the previous use.
+*/
+
 
 struct Compiler {
-    pub code_limit: u32,
-
     code: ManualVec<u8>,
-    code_size: u32,
+    frames: ManualVec<Frame>,
+    oom: bool,
+}
+
+enum Label {
+    Known(u32),
+    Unknown { last_use: u32 }, // u32::MAX -> None.
+}
+
+enum FrameKind {
+    Block,
+    If { else_use: u32 },
+    Else,
+    Loop,
+}
+
+struct Frame {
+    kind: FrameKind,
+    label: Label,
 }
 
 impl Compiler {
+    fn new() -> Self {
+        Self {
+            code: ManualVec::new(),
+            frames: ManualVec::new(),
+            oom: false,
+        }
+    }
+
+    fn begin_func(&mut self) {
+        self.code.clear();
+        self.frames.clear();
+    }
+
+
     #[inline]
     fn push_byte(&mut self, byte: u8) {
-        if self.code_size < self.code_limit {
-            self.code_size += 1;
-            _ = self.code.push_or_alloc(byte);
+        if 1 > i32::MAX as usize - self.code.len()
+        || self.code.push_or_alloc(byte).is_err() {
+            self.oom = true;
         }
     }
 
     #[inline]
     fn push_bytes(&mut self, bytes: &[u8]) {
-        if bytes.len() <= (self.code_limit - self.code_size) as usize {
-            self.code_size += bytes.len() as u32;
-            _ = self.code.extend_from_slice_or_alloc(bytes);
+        if bytes.len() > i32::MAX as usize - self.code.len()
+        || self.code.extend_from_slice_or_alloc(bytes).is_err() {
+            self.oom = true;
         }
-        else {
-            self.code_size = self.code_limit;
+    }
+
+    fn push_frame(&mut self, frame: Frame) {
+        if self.frames.push_or_alloc(frame).is_err() {
+            self.oom = true;
+        }
+    }
+
+    fn jump(&mut self, label: u32) {
+        let frame = &mut self.frames[label as usize];
+        match &mut frame.label {
+            Label::Known(dst) => {
+                let delta = *dst as i32 - self.code.len() as i32;
+                self.push_bytes(&delta.to_ne_bytes());
+            }
+
+            Label::Unknown { last_use } => {
+                let prev = *last_use;
+                *last_use = self.code.len() as u32;
+                self.push_bytes(&prev.to_ne_bytes());
+            }
+        }
+    }
+
+    fn patch_jumps(&mut self, last_use: u32, dst: u32) {
+        let mut at = last_use;
+        while at != u32::MAX {
+            let slice = &mut self.code[at as usize .. at as usize + 4];
+            let bytes = <&mut [u8; 4]>::try_from(slice).unwrap();
+            let next = u32::from_ne_bytes(*bytes);
+
+            let delta = dst as i32 - at as i32;
+            *bytes = delta.to_ne_bytes();
+
+            at = next;
         }
     }
 }
@@ -39,137 +124,92 @@ impl wasm::OperatorVisitor for Compiler {
     }
 
     fn visit_nop(&mut self) -> Self::Output {
+        self.push_byte(opcode::NOP);
     }
 
     fn visit_block(&mut self, _ty: BlockType) -> Self::Output {
-        //self.expect_n(self.block_begin_types(ty))?;
-        //self.push_frame(ControlFrameKind::Block, ty)
-        todo!()
+        self.push_byte(opcode::BLOCK);
+        self.push_frame(Frame {
+            kind: FrameKind::Block,
+            label: Label::Unknown { last_use: u32::MAX },
+        });
     }
 
     fn visit_loop(&mut self, _ty: BlockType) -> Self::Output {
-        //self.expect_n(self.block_begin_types(ty))?;
-        //self.push_frame(ControlFrameKind::Loop, ty)
-        todo!()
+        self.push_byte(opcode::LOOP);
+        self.push_frame(Frame {
+            kind: FrameKind::Block,
+            label: Label::Known(self.code.len() as u32),
+        });
     }
 
     fn visit_if(&mut self, _ty: BlockType) -> Self::Output {
-        //self.expect(ValueType::I32)?;
-        //self.expect_n(self.block_begin_types(ty))?;
-        //self.push_frame(ControlFrameKind::If, ty)
-        todo!()
+        self.push_byte(opcode::IF);
+        let else_use = self.code.len() as u32;
+        self.push_bytes(&u32::MAX.to_ne_bytes());
+        self.push_frame(Frame {
+            kind: FrameKind::If { else_use },
+            label: Label::Unknown { last_use: u32::MAX },
+        });
     }
 
     fn visit_else(&mut self) -> Self::Output {
-        //let frame = self.pop_frame()?;
-        //if frame.kind != ControlFrameKind::If {
-            //todo!()
-        //}
-        //self.push_frame(ControlFrameKind::Else, frame.ty)
-        todo!()
+        let frame = self.frames.pop().expect("invalid wasm");
+        let FrameKind::If { else_use } = frame.kind else { panic!("invalid wasm") };
+
+        let else_offset = self.code.len() as u32;
+        self.patch_jumps(else_use, else_offset);
+
+        self.push_byte(opcode::ELSE);
+        self.push_frame(Frame {
+            kind: FrameKind::Else,
+            label: Label::Unknown { last_use: u32::MAX },
+        });
     }
 
     fn visit_end(&mut self) -> Self::Output {
-        /*
-        if self.frames.len() > 1 {
-            let frame = self.pop_frame()?;
-            self.push_n(self.block_end_types(frame.ty))
+        let frame = self.frames.pop().expect("invalid wasm");
+
+        let offset = self.code.len() as u32;
+
+        if let FrameKind::If { else_use } = frame.kind {
+            self.patch_jumps(else_use, offset)
         }
-        else {
-            // implicit return.
-            self.expect_n(self.block_end_types(self.frames[0].ty))?;
-            if self.stack.len() != 0 {
-                todo!()
-            }
-            self.unreachable();
-            return Ok(());
+
+        if let Label::Unknown { last_use } = frame.label {
+            self.patch_jumps(last_use, offset)
         }
-        */
-        todo!()
+
+        self.push_byte(opcode::END);
     }
 
     fn visit_br(&mut self, label: u32) -> Self::Output {
-        let _ = label;
-        /*
-        let frame = self.label(label)?;
-        self.expect_n(self.frame_br_types(&frame))?;
-        self.unreachable();
-        return Ok(());
-        */
-        todo!()
+        self.push_byte(opcode::BR);
+        self.jump(label);
     }
 
     fn visit_br_if(&mut self, label: u32) -> Self::Output {
-        let _ = label;
-        /*
-        let frame = self.label(label)?;
-        self.expect(ValueType::I32)?;
-        self.expect_n(self.frame_br_types(&frame))?;
-        self.push_n(self.frame_br_types(&frame))
-        */
-        todo!()
+        self.push_byte(opcode::BR_IF);
+        self.jump(label);
     }
 
     fn visit_br_table(&mut self, table: ()) -> Self::Output {
-        let _ = table;
-        /*
-        let _ = table;
-        self.expect(ValueType::I32)?;
-        // @todo: validate br targets.
-        self.unreachable();
-        return Ok(());
-        */
-        todo!()
+        self.push_byte(opcode::UNREACHABLE);
     }
 
     fn visit_return(&mut self) -> Self::Output {
-        /*
-        let frame = self.frames[0];
-        self.expect_n(self.block_end_types(frame.ty))?;
-        self.unreachable();
-        return Ok(());
-        */
-        todo!()
+        self.push_byte(opcode::RETURN);
     }
 
     fn visit_call(&mut self, func: FuncIdx) -> Self::Output {
-        let _ = func;
-        /*
-        let func = func as usize;
-
-        let imports = self.module.imports.funcs;
-
-        let type_idx = match imports.get(func).copied() {
-            Some(it) => it,
-            None => 
-                self.module.funcs.get(func - imports.len()).copied()
-                .ok_or_else(|| todo!())?,
-        };
-
-        let ty =
-            self.module.types.get(type_idx as usize).copied()
-            .ok_or_else(|| todo!())?;
-
-        self.expect_n(ty.params)?;
-        self.push_n(ty.rets)
-        */
-        todo!()
+        self.push_byte(opcode::CALL);
+        self.push_bytes(&func.to_ne_bytes());
     }
 
     fn visit_call_indirect(&mut self, ty: TypeIdx, table: TableIdx) -> Self::Output {
-        let _ = (ty, table);
-        /*
-        let table = self.table(table)?;
-        if table.ty != RefType::FuncRef {
-            todo!()
-        }
-
-        let ty = self.ty(ty)?;
-        self.expect(ValueType::I32)?;
-        self.expect_n(ty.params)?;
-        self.push_n(ty.rets)
-        */
-        todo!()
+        self.push_byte(opcode::CALL_INDIRECT);
+        self.push_bytes(&ty.to_ne_bytes());
+        self.push_bytes(&table.to_ne_bytes());
     }
 
     fn visit_drop(&mut self) -> Self::Output {
