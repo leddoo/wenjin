@@ -7,7 +7,7 @@ use sti::boks::Box;
 use sti::manual_vec::ManualVec;
 
 use crate::Error;
-use crate::memory::{Memory, MemoryCtx};
+use crate::memory::{MemoryData, Memory};
 
 
 pub struct MemoryId {
@@ -17,7 +17,7 @@ pub struct MemoryId {
 
 
 pub struct Store {
-    memories: ManualVec<Box<UnsafeCell<Memory>>>
+    memories: ManualVec<Box<UnsafeCell<MemoryData>>>
 }
 
 impl Store {
@@ -33,7 +33,7 @@ impl Store {
             //gen: NonZeroU32::MIN,
         };
 
-        let memory = Memory::new(limits).map_err(|_| Error::OutOfMemory)?;
+        let memory = MemoryData::new(limits).map_err(|_| Error::OutOfMemory)?;
 
         let memory = Box::try_new_in(GlobalAlloc, UnsafeCell::new(memory)).ok_or_else(|| Error::OutOfMemory)?;
 
@@ -42,8 +42,8 @@ impl Store {
         return Ok(id);
     }
 
-    pub fn memory<'a>(&'a self, id: MemoryId) -> Result<MemoryCtx<'a>, Error> {
-        Ok(MemoryCtx::new(box_to_nonnull(
+    pub fn memory<'a>(&'a self, id: MemoryId) -> Result<Memory<'a>, Error> {
+        Ok(Memory::new(box_to_nonnull(
             self.memories.get(id.id as usize)
             .ok_or(Error::InvalidHandle)?)))
     }

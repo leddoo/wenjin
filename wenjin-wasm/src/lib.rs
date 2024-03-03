@@ -1,10 +1,11 @@
 pub mod leb128;
 
 pub mod opcode;
-pub mod operator;
-pub mod parser;
-pub mod validator;
+mod operator;
+mod parser;
+mod validator;
 
+pub use operator::{Operator, OperatorVisitor, MkOperator, AndThenOp};
 pub use parser::{Parser, ParseError, ParseErrorKind};
 pub use validator::{Validator, ValidatorError};
 

@@ -9,7 +9,7 @@ use crate::Error;
 
 
 
-pub(crate) struct Memory {
+pub(crate) struct MemoryData {
     limits: Limits,
     buffer: NonNull<u8>,
     size_pages: u32,
@@ -17,7 +17,7 @@ pub(crate) struct Memory {
 
 const ALIGN: usize = 16;
 
-impl Memory {
+impl MemoryData {
     pub fn new(limits: Limits) -> Result<Self, ()> {
         let mut this = Self {
             limits,
@@ -68,7 +68,7 @@ impl Memory {
     }
 }
 
-impl Drop for Memory {
+impl Drop for MemoryData {
     fn drop(&mut self) {
         let size = self.size_bytes();
         unsafe {
@@ -80,14 +80,14 @@ impl Drop for Memory {
 }
 
 
-pub struct MemoryCtx<'a> {
-    memory: NonNull<Memory>,
-    phantom: PhantomData<&'a mut Memory>,
+pub struct Memory<'a> {
+    memory: NonNull<MemoryData>,
+    phantom: PhantomData<&'a mut MemoryData>,
 }
 
-impl<'a> MemoryCtx<'a> {
+impl<'a> Memory<'a> {
     #[inline]
-    pub(crate) fn new(memory: NonNull<Memory>) -> Self {
+    pub(crate) fn new(memory: NonNull<MemoryData>) -> Self {
         Self { memory, phantom: PhantomData }
     }
 

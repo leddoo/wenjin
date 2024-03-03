@@ -1,10 +1,12 @@
 
 - todo:
     - rewrite:
-        - tables.
-        - globals.
-        - interp.
+        - vm.
+            - state.
+            - loop.
         - parse `br_table`, pass something that iterates again.
+        - table/global api.
+            - kinda want typed api for globals (maybe also mut)?
     - merge interp stuff into `Store`.
     - `MemoryCtx`.
         - basically just a pointer to `StoreMemory`.
