@@ -128,6 +128,13 @@ pub struct Limits {
     pub max: Option<u32>,
 }
 
+impl Default for Limits {
+    #[inline]
+    fn default() -> Self {
+        Limits { min: 0, max: None }
+    }
+}
+
 
 #[derive(Clone, Copy, Debug)]
 pub struct TableType {

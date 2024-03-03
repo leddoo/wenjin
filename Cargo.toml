@@ -2,7 +2,7 @@
 members = [
     "wenjin-wasm",
     "wenjin-derive",
-    #"wenjin",
+    "wenjin",
     #"wasi-types",
     #"examples/basic",
 ]

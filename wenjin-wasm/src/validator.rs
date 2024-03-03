@@ -360,6 +360,7 @@ impl<'a> OperatorVisitor for Validator<'a> {
     }
 
     fn visit_br_table(&mut self, table: ()) -> Self::Output {
+        let _ = table;
         self.expect(ValueType::I32)?;
         // @todo: validate br targets.
         self.unreachable();
@@ -432,6 +433,7 @@ impl<'a> OperatorVisitor for Validator<'a> {
     }
 
     fn visit_typed_select(&mut self, ty: ValueType) -> Self::Output {
+        let _ = ty;
         todo!()
     }
 
@@ -465,10 +467,12 @@ impl<'a> OperatorVisitor for Validator<'a> {
     }
 
     fn visit_table_get(&mut self, idx: TableIdx) -> Self::Output {
+        let _ = idx;
         todo!()
     }
 
     fn visit_table_set(&mut self, idx: TableIdx) -> Self::Output {
+        let _ = idx;
         todo!()
     }
 

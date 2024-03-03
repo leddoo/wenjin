@@ -23,7 +23,7 @@ dependencies = [
 [[package]]
 name = "sti"
 version = "0.1.11"
-source = "git+https://github.com/leddoo/sti#1023384913be8575e3a8c50a9b0f0614e18ccc2e"
+source = "git+https://github.com/leddoo/sti#3aa6381ad434494cede5f0c97d46414f1713be2c"
 
 [[package]]
 name = "syn"
@@ -41,6 +41,14 @@ name = "unicode-ident"
 version = "1.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3354b9ac3fae1ff6755cb6db53683adb661634f67557942dea4facebec0fee4b"
+
+[[package]]
+name = "wenjin"
+version = "0.1.0"
+dependencies = [
+ "sti",
+ "wenjin-wasm",
+]
 
 [[package]]
 name = "wenjin-derive"

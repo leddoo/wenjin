@@ -1,7 +1,9 @@
 
 - todo:
     - rewrite:
-        - the rest of the validator owl.
+        - tables.
+        - globals.
+        - interp.
         - parse `br_table`, pass something that iterates again.
     - merge interp stuff into `Store`.
     - `MemoryCtx`.
