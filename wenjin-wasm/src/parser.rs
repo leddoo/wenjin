@@ -411,7 +411,7 @@ impl<'a> Parser<'a> {
             I64_STORE16     => v.visit_i64_store16(self.parse_u32()?, self.parse_u32()?),
             I64_STORE32     => v.visit_i64_store32(self.parse_u32()?, self.parse_u32()?),
             MEMORY_SIZE     => v.visit_memory_size(self.parse_u32()?),
-            MEMORY_GROW     => v.visit_memory_size(self.parse_u32()?),
+            MEMORY_GROW     => v.visit_memory_grow(self.parse_u32()?),
             I32_CONST       => v.visit_i32_const(self.parse_i32()?),
             I64_CONST       => v.visit_i64_const(self.parse_i64()?),
             F32_CONST       => v.visit_f32_const(self.parse_f32()?),

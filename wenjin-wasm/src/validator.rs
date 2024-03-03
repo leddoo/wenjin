@@ -22,10 +22,9 @@ pub struct Validator<'a> {
     locals: ManualVec<ValueType>,
     stack: ManualVec<ValueType>,
     frames: ManualVec<ControlFrame>,
-    frame: ControlFrame,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct ControlFrame {
     kind:        ControlFrameKind,
     ty:          BlockType,
@@ -51,17 +50,15 @@ impl<'a> Validator<'a> {
             locals: ManualVec::new(),
             stack: ManualVec::new(),
             frames: ManualVec::new(),
-            frame: ControlFrame {
-                kind: ControlFrameKind::Block,
-                ty: BlockType::Unit,
-                height: 0,
-                unreachable: false,
-            },
         }
     }
 
     pub fn stack(&self) -> &[ValueType] {
         &self.stack
+    }
+
+    pub fn num_frames(&self) -> u32 {
+        self.frames.len() as u32
     }
 
 
@@ -77,24 +74,31 @@ impl<'a> Validator<'a> {
         }
 
         self.stack.truncate(0);
+
         self.frames.truncate(0);
-        self.frame = ControlFrame {
+        self.frames.push_or_alloc(ControlFrame {
             kind: ControlFrameKind::Block,
             ty: BlockType::Func(ty),
             height: 0,
             unreachable: false,
-        };
+        }).map_err(|_| todo!())?;
+
         return Ok(());
     }
 
+    fn is_unreachable(&self) -> bool {
+        self.frames.rev(0).unreachable
+    }
+
     fn unreachable(&mut self) {
-        self.frame.unreachable = true;
-        self.stack.truncate(self.frame.height as usize);
+        let frame = self.frames.rev_mut(0);
+        frame.unreachable = true;
+        self.stack.truncate(frame.height as usize);
     }
 
 
     fn push(&mut self, ty: ValueType) -> Result<(), ValidatorError> {
-        if !self.frame.unreachable {
+        if !self.is_unreachable() {
             if self.stack.len() >= self.stack_limit as usize {
                 todo!()
             }
@@ -112,7 +116,9 @@ impl<'a> Validator<'a> {
     }
 
     fn pop(&mut self) -> Result<ValueType, ValidatorError> {
-        if self.stack.len() <= self.frame.height as usize {
+        debug_assert!(!self.is_unreachable());
+
+        if self.stack.len() <= self.frames.rev(0).height as usize {
             todo!()
         }
 
@@ -120,8 +126,8 @@ impl<'a> Validator<'a> {
     }
 
     fn expect(&mut self, expected_ty: ValueType) -> Result<(), ValidatorError> {
-        if !self.frame.unreachable {
-            if self.stack.len() <= self.frame.height as usize {
+        if !self.is_unreachable() {
+            if self.stack.len() <= self.frames.rev(0).height as usize {
                 todo!()
             }
 
@@ -149,49 +155,39 @@ impl<'a> Validator<'a> {
 
         self.push_n(self.block_begin_types(ty))?;
 
-        self.frames.push_or_alloc(self.frame).map_err(|_| todo!())?;
-        self.frame = ControlFrame {
+        self.frames.push_or_alloc(ControlFrame {
             kind,
             ty,
             height: self.stack.len() as u32,
-            unreachable: false,
-        };
+            unreachable: self.is_unreachable(),
+        }).map_err(|_| todo!())?;
 
         return Ok(());
     }
 
     // expects the block end types.
     fn pop_frame(&mut self) -> Result<ControlFrame, ValidatorError> {
-        if self.frames.len() == 0 {
+        let Some(frame) = self.frames.last().copied() else {
+            todo!()
+        };
+
+        self.expect_n(self.block_end_types(frame.ty))?;
+        if self.stack.len() != frame.height as usize {
             todo!()
         }
 
-        let end_types = self.block_end_types(self.frame.ty);
-        let height    = self.frame.height;
-
-        self.expect_n(&end_types)?;
-        if self.stack.len() != height as usize {
-            todo!()
-        }
-
-        let result = self.frame;
-        self.frame = self.frames.pop().unwrap();
-        return Ok(result);
+        let frame = self.frames.pop().unwrap();
+        return Ok(frame);
     }
 
 
     fn label(&self, idx: u32) -> Result<ControlFrame, ValidatorError> {
+        // @todo: get_rev
         let idx = idx as usize;
-        if idx > self.frames.len() {
+        if idx >= self.frames.len() {
             todo!()
         }
-
-        if idx == 0 {
-            return Ok(self.frame);
-        }
-        else {
-            return Ok(*self.frames.rev(idx - 1));
-        }
+        Ok(*self.frames.rev(idx))
     }
 
     fn ty(&self, idx: TypeIdx) -> Result<FuncType<'a>, ValidatorError> {
@@ -334,13 +330,13 @@ impl<'a> OperatorVisitor for Validator<'a> {
     }
 
     fn visit_end(&mut self) -> Self::Output {
-        if self.frames.len() > 0 {
+        if self.frames.len() > 1 {
             let frame = self.pop_frame()?;
             self.push_n(self.block_end_types(frame.ty))
         }
         else {
             // implicit return.
-            self.expect_n(self.block_end_types(self.frame.ty))?;
+            self.expect_n(self.block_end_types(self.frames[0].ty))?;
             if self.stack.len() != 0 {
                 todo!()
             }
@@ -371,7 +367,7 @@ impl<'a> OperatorVisitor for Validator<'a> {
     }
 
     fn visit_return(&mut self) -> Self::Output {
-        let frame = self.frames.get(0).unwrap_or(&self.frame);
+        let frame = self.frames[0];
         self.expect_n(self.block_end_types(frame.ty))?;
         self.unreachable();
         return Ok(());
@@ -417,7 +413,7 @@ impl<'a> OperatorVisitor for Validator<'a> {
     fn visit_select(&mut self) -> Self::Output {
         self.expect(ValueType::I32)?;
 
-        if !self.frame.unreachable {
+        if !self.is_unreachable() {
             let t1 = self.pop()?;
             let t2 = self.pop()?;
 
