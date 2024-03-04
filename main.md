@@ -2,9 +2,9 @@
 - todo:
     - rewrite:
         - `run_interp`.
-            - remaining ops.
             - fix if/loop jumps.
             - calls.
+            - remaining ops.
         - wasm types & typed func.
         - wasm test suite.
         - rest of the owl:

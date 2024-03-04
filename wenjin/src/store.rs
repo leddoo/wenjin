@@ -13,11 +13,22 @@ use crate::memory::{MemoryData, Memory};
 use crate::interp;
 
 
+#[derive(Clone, Copy, Debug)]
 pub struct ModuleId { id: u32 }
+
+#[derive(Clone, Copy, Debug)]
 pub struct InstanceId { id: u32 }
+
+#[derive(Clone, Copy, Debug)]
 pub struct FuncId { id: u32 }
+
+#[derive(Clone, Copy, Debug)]
 pub struct TableId { id: u32 }
+
+#[derive(Clone, Copy, Debug)]
 pub struct MemoryId { id: u32 }
+
+#[derive(Clone, Copy, Debug)]
 pub struct GlobalId { id: u32 }
 
 
@@ -70,6 +81,7 @@ pub(crate) enum FuncKind {
     Interp(InterpFunc),
 }
 
+#[derive(Debug)]
 pub(crate) struct InterpFunc {
     pub instance: u32,
     pub code: *mut u8,
@@ -345,6 +357,7 @@ impl Store {
         for i in 0..ty.rets.len() {
             rets[i] = self.thread.stack[bp + i].to_value(ty.rets[i]);
         }
+        self.thread.stack.truncate(bp);
 
         return Ok(());
     }
