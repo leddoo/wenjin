@@ -15,6 +15,7 @@ fn basic() {
 
     let mut results = [Value::I32(0)];
     store.call_dyn(add, &[Value::I32(33), Value::I32(36)], &mut results).unwrap();
+    assert_eq!(results, [Value::I32(69)]);
 }
 
 

@@ -30,6 +30,7 @@ use wasm::{ValueType, BlockType, TypeIdx, FuncIdx, TableIdx, MemoryIdx, GlobalId
 
 
 pub(crate) struct Compiler {
+    num_rets: u32,
     code: ManualVec<u8>,
     frames: ManualVec<Frame>,
     oom: bool,
@@ -55,13 +56,15 @@ struct Frame {
 impl Compiler {
     pub fn new() -> Self {
         Self {
+            num_rets: 0,
             code: ManualVec::new(),
             frames: ManualVec::new(),
             oom: false,
         }
     }
 
-    pub fn begin_func(&mut self) {
+    pub fn begin_func(&mut self, num_rets: u32) {
+        self.num_rets = num_rets;
         self.code.clear();
         self.frames.clear();
     }
@@ -195,6 +198,7 @@ impl wasm::OperatorVisitor for Compiler {
     fn visit_end(&mut self) -> Self::Output {
         let Some(frame) = self.frames.pop() else {
             self.push_byte(opcode::RETURN);
+            self.push_bytes(&self.num_rets.to_ne_bytes());
             return;
         };
 
@@ -227,6 +231,7 @@ impl wasm::OperatorVisitor for Compiler {
 
     fn visit_return(&mut self) -> Self::Output {
         self.push_byte(opcode::RETURN);
+        self.push_bytes(&self.num_rets.to_ne_bytes());
     }
 
     fn visit_call(&mut self, func: FuncIdx) -> Self::Output {

@@ -61,6 +61,11 @@ impl<'a> Validator<'a> {
     }
 
     #[inline(always)]
+    pub fn num_locals(&self) -> u32 {
+        self.locals.len() as u32
+    }
+
+    #[inline(always)]
     pub fn stack(&self) -> &[ValueType] {
         &self.stack
     }
