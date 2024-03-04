@@ -120,8 +120,6 @@ impl Store {
     pub(crate) fn run_interp(&mut self, mut state: State) -> Result<(), Error> {
         loop {
             let op = state.next_u8();
-            println!("{:x}: {}", state.pc as usize - state.code_begin as usize, wasm::opcode::name(op));
-            println!("{}", unsafe { state.sp.offset_from(state.locals_end) });
             match op {
                 wasm::opcode::UNREACHABLE => {
                     todo!()
@@ -152,7 +150,6 @@ impl Store {
                     let delta = state.next_jump();
                     let cond = state.pop().as_i32();
                     if dbg!(cond) != 0 {
-                        println!("jump by {}", delta.1);
                         state.jump(delta);
                     }
                 }
@@ -207,21 +204,18 @@ impl Store {
                 wasm::opcode::LOCAL_GET => {
                     let idx = state.next_u32();
                     let v = unsafe { *state.local(idx) };
-                    println!("{} {}", v.as_i32(), v.as_f32());
                     state.push(v);
                 }
 
                 wasm::opcode::LOCAL_SET => {
                     let idx = state.next_u32();
                     let v = state.pop();
-                    println!("{} {}", v.as_i32(), v.as_f32());
                     unsafe { *state.local(idx) = v };
                 }
 
                 wasm::opcode::LOCAL_TEE => {
                     let idx = state.next_u32();
                     let v = state.top();
-                    println!("{} {}", v.as_i32(), v.as_f32());
                     unsafe { *state.local(idx) = v };
                 }
 

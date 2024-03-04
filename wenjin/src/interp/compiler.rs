@@ -36,11 +36,13 @@ pub(crate) struct Compiler {
     oom: bool,
 }
 
+#[derive(Debug)]
 enum Label {
     Known(u32),
     Unknown { last_use: u32 }, // u32::MAX -> None.
 }
 
+#[derive(Debug)]
 enum FrameKind {
     Block,
     If { else_use: u32 },
@@ -48,6 +50,7 @@ enum FrameKind {
     Loop,
 }
 
+#[derive(Debug)]
 struct Frame {
     kind: FrameKind,
     label: Label,
@@ -67,6 +70,10 @@ impl Compiler {
         self.num_rets = num_rets;
         self.code.clear();
         self.frames.clear();
+    }
+
+    pub fn peek_code(&self) -> &[u8] {
+        &self.code
     }
 
     pub fn code<A: Alloc>(&self, alloc: A) -> Option<Box<UnsafeCell<[u8]>, A>> {
@@ -114,7 +121,7 @@ impl Compiler {
     }
 
     fn jump(&mut self, label: u32) {
-        let frame = &mut self.frames[label as usize];
+        let frame = self.frames.rev_mut(label as usize);
         match &mut frame.label {
             Label::Known(dst) => {
                 let delta = *dst as i32 - self.code.len() as i32;
