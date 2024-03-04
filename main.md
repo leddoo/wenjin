@@ -2,7 +2,8 @@
 - todo:
     - rewrite:
         - interp vm.
-        - exports.
+            - just one stack for now, we can do threads later.
+            - stack is shared resource, may realloc, need to update ptr after opaque call.
         - call dyn.
         - wasm types & typed func.
         - wasm test suite.

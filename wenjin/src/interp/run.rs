@@ -1,4 +1,15 @@
+use crate::Error;
 
-pub(crate) fn interp() {
+
+struct State {
 }
+
+impl State {
+}
+
+fn run() -> Result<(), Error> {
+
+    todo!()
+}
+
 
