@@ -55,10 +55,17 @@ impl<'a> Validator<'a> {
         }
     }
 
+    #[inline(always)]
+    pub fn max_stack(&self) -> u32 {
+        self.max_stack
+    }
+
+    #[inline(always)]
     pub fn stack(&self) -> &[ValueType] {
         &self.stack
     }
 
+    #[inline(always)]
     pub fn num_frames(&self) -> u32 {
         self.frames.len() as u32
     }

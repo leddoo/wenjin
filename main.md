@@ -1,14 +1,11 @@
 
 - todo:
     - rewrite:
-        - store the funcs.
-        - store the module (incl func ids).
+        - interp vm.
+        - exports.
+        - call dyn.
         - wasm types & typed func.
-        - create instance.
-            - module ref.
-            - funcs refs array.
-        - run.
-            - call checks current instance func refs array.
+        - wasm test suite.
         - rest of the owl:
             - globals.
             - data.

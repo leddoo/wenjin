@@ -1,3 +1,7 @@
+use core::cell::UnsafeCell;
+
+use sti::alloc::Alloc;
+use sti::boks::Box;
 use sti::manual_vec::ManualVec;
 
 use wasm::{ValueType, BlockType, TypeIdx, FuncIdx, TableIdx, MemoryIdx, GlobalIdx, opcode};
@@ -60,6 +64,27 @@ impl Compiler {
     pub fn begin_func(&mut self) {
         self.code.clear();
         self.frames.clear();
+    }
+
+    pub fn code<A: Alloc>(&self, alloc: A) -> Option<Box<UnsafeCell<[u8]>, A>> {
+        if self.oom {
+            return None;
+        }
+
+        let len = self.code.len();
+
+        let ptr = sti::alloc::alloc_array::<u8, _>(&alloc, len)?;
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                self.code.as_ptr(),
+                ptr.as_ptr(),
+                len);
+
+            let ptr = core::slice::from_raw_parts_mut(ptr.as_ptr(), len);
+            let ptr = core::ptr::NonNull::from(ptr);
+            let ptr = core::mem::transmute(ptr);
+            return Some(Box::from_raw_parts(ptr, alloc));
+        }
     }
 
 
@@ -138,7 +163,7 @@ impl wasm::OperatorVisitor for Compiler {
     fn visit_loop(&mut self, _ty: BlockType) -> Self::Output {
         self.push_byte(opcode::LOOP);
         self.push_frame(Frame {
-            kind: FrameKind::Block,
+            kind: FrameKind::Loop,
             label: Label::Known(self.code.len() as u32),
         });
     }
