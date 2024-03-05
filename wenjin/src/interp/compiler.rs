@@ -255,7 +255,7 @@ impl wasm::OperatorVisitor for Compiler {
     }
 
     fn visit_typed_select(&mut self, _ty: ValueType) -> Self::Output {
-        self.push_byte(opcode::TYPED_SELECT);
+        self.push_byte(opcode::SELECT);
     }
 
     fn visit_local_get(&mut self, idx: u32) -> Self::Output {

@@ -396,15 +396,10 @@ impl Store {
     }
 
     pub fn memory<'a>(&'a self, id: MemoryId) -> Result<Memory<'a>, Error> {
-        Ok(Memory::new(box_to_nonnull(
+        Ok(Memory::new(
             self.memories.get(id.id as usize)
-            .ok_or(Error::InvalidHandle)?)))
+            .ok_or(Error::InvalidHandle)?))
     }
-}
-
-#[inline(always)]
-fn box_to_nonnull<T>(boks: &Box<UnsafeCell<T>>) -> NonNull<T> {
-    (boks.inner() as NonNull<UnsafeCell<T>>).cast()
 }
 
 

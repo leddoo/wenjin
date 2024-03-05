@@ -1,4 +1,5 @@
 use core::ptr::NonNull;
+use core::cell::UnsafeCell;
 use core::marker::PhantomData;
 
 use sti::alloc::{Alloc, GlobalAlloc, Layout};
@@ -87,8 +88,8 @@ pub struct Memory<'a> {
 
 impl<'a> Memory<'a> {
     #[inline]
-    pub(crate) fn new(memory: NonNull<MemoryData>) -> Self {
-        Self { memory, phantom: PhantomData }
+    pub(crate) fn new(memory: &UnsafeCell<MemoryData>) -> Self {
+        Self { memory: NonNull::from(memory).cast(), phantom: PhantomData }
     }
 
     #[inline]
@@ -105,6 +106,12 @@ impl<'a> Memory<'a> {
     pub fn grow(&mut self, by_pages: u32) -> Result<u32, Error> {
         unsafe { self.memory.as_mut().grow(by_pages) }
         .map_err(|_| todo!())
+    }
+
+    #[inline]
+    pub(crate) fn as_mut_ptr(&mut self) -> (*mut u8, usize) {
+        let inner = unsafe { self.memory.as_mut() };
+        (inner.buffer.as_ptr(), inner.size_bytes())
     }
 }
 

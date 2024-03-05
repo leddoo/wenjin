@@ -1,7 +1,7 @@
 use core::hint::unreachable_unchecked;
 
-use crate::Error;
-use crate::store::{Store, FuncKind, InterpFunc, StackValue, ThreadData, StackFrame};
+use crate::{Error, Memory};
+use crate::store::{Store, FuncKind, StackValue, StackFrame};
 
 
 #[derive(Debug)]
@@ -18,6 +18,9 @@ struct State {
     locals_end: *mut StackValue,
     stack_frame_end: *mut StackValue,
     stack_alloc_end: *mut StackValue,
+
+    memory: *mut u8,
+    memory_size: usize,
 }
 
 impl State {
@@ -103,6 +106,51 @@ impl State {
             self.pc = from.offset(delta);
         }
     }
+
+    #[inline]
+    fn load<const N: usize>(&mut self, addr: u32, offset: u32) -> Option<[u8; N]> {
+        // check addr+offset+N <= memory_size
+        let end = addr.checked_add(offset)?.checked_add(N as u32)?;
+        if end as usize > self.memory_size {
+            return None;
+        }
+
+        unsafe {
+            let ptr = self.memory.add((addr + offset) as usize);
+            Some(ptr.cast::<[u8; N]>().read())
+        }
+    }
+
+    #[inline]
+    fn load_op<const N: usize>(&mut self) -> Option<[u8; N]> {
+        let offset = self.next_u32();
+        let addr = self.pop().as_i32() as u32;
+        self.load(addr, offset)
+    }
+
+    #[must_use]
+    #[inline]
+    fn store<const N: usize>(&mut self, addr: u32, offset: u32, value: [u8; N]) -> Option<()> {
+        // check addr+offset+N <= memory_size
+        let end = addr.checked_add(offset)?.checked_add(N as u32)?;
+        if end as usize > self.memory_size {
+            return None;
+        }
+
+        unsafe {
+            let ptr = self.memory.add((addr + offset) as usize);
+            ptr.cast::<[u8; N]>().write(value);
+            Some(())
+        }
+    }
+
+    #[must_use]
+    #[inline]
+    fn store_op<const N: usize>(&mut self, value: [u8; N]) -> Option<()> {
+        let offset = self.next_u32();
+        let addr = self.pop().as_i32() as u32;
+        self.store(addr, offset, value)
+    }
 }
 
 impl Store {
@@ -131,6 +179,16 @@ impl Store {
             let sp = locals_end;
 
 
+            let inst = &self.instances[f.instance as usize];
+
+            let mut memory = core::ptr::null_mut();
+            let mut memory_size = 0;
+            if let Some(mem_id) = inst.memories.get(0).copied() {
+                let mut mem = Memory::new(&self.memories[mem_id as usize]);
+                (memory, memory_size) = mem.as_mut_ptr();
+            }
+
+
             self.thread.frames.push_or_alloc(None).map_err(|_| Error::OutOfMemory)?;
 
             State {
@@ -144,6 +202,8 @@ impl Store {
                 locals_end,
                 stack_frame_end,
                 stack_alloc_end,
+                memory,
+                memory_size,
             }
         };
 
@@ -205,6 +265,20 @@ impl Store {
                         let func = &self.funcs[frame.func as usize];
                         let FuncKind::Interp(f) = &func.kind else { unreachable_unchecked() };
 
+                        let mut memory = state.memory;
+                        let mut memory_size = state.memory_size;
+                        if frame.instance != state.instance {
+                            let inst = &self.instances[frame.instance as usize];
+
+                            memory = core::ptr::null_mut();
+                            memory_size = 0;
+
+                            if let Some(mem_id) = inst.memories.get(0).copied() {
+                                let mut mem = Memory::new(&self.memories[mem_id as usize]);
+                                (memory, memory_size) = mem.as_mut_ptr();
+                            }
+                        }
+
                         state = State {
                             instance: frame.instance,
                             func: frame.func,
@@ -216,6 +290,8 @@ impl Store {
                             locals_end: bp.add(f.num_locals as usize),
                             stack_frame_end: bp.add(f.stack_size as usize),
                             stack_alloc_end: state.stack_alloc_end,
+                            memory,
+                            memory_size,
                         };
                     }
                     else {
@@ -280,6 +356,20 @@ impl Store {
                                 todo!()
                             }
 
+                            let mut memory = state.memory;
+                            let mut memory_size = state.memory_size;
+                            if f.instance != state.instance {
+                                let inst = &self.instances[f.instance as usize];
+
+                                memory = core::ptr::null_mut();
+                                memory_size = 0;
+
+                                if let Some(mem_id) = inst.memories.get(0).copied() {
+                                    let mut mem = Memory::new(&self.memories[mem_id as usize]);
+                                    (memory, memory_size) = mem.as_mut_ptr();
+                                }
+                            }
+
                             state = State {
                                 instance: f.instance,
                                 func: func_idx,
@@ -291,6 +381,8 @@ impl Store {
                                 locals_end,
                                 stack_frame_end,
                                 stack_alloc_end,
+                                memory,
+                                memory_size,
                             };
                         }
 
@@ -312,9 +404,7 @@ impl Store {
                     state.push(if cond != 0 { a } else { b });
                 }
 
-                wasm::opcode::TYPED_SELECT => {
-                    todo!()
-                }
+                wasm::opcode::TYPED_SELECT => unreachable!(),
 
                 wasm::opcode::LOCAL_GET => {
                     let idx = state.next_u32();
@@ -351,95 +441,118 @@ impl Store {
                 }
 
                 wasm::opcode::I32_LOAD => {
-                    todo!()
+                    let Some(v) = state.load_op() else { todo!() };
+                    state.push(StackValue::from_i32(i32::from_ne_bytes(v)));
                 }
 
                 wasm::opcode::I64_LOAD => {
-                    todo!()
+                    let Some(v) = state.load_op() else { todo!() };
+                    state.push(StackValue::from_i64(i64::from_ne_bytes(v)));
                 }
 
                 wasm::opcode::F32_LOAD => {
-                    todo!()
+                    let Some(v) = state.load_op() else { todo!() };
+                    state.push(StackValue::from_f32(f32::from_ne_bytes(v)));
                 }
 
                 wasm::opcode::F64_LOAD => {
-                    todo!()
+                    let Some(v) = state.load_op() else { todo!() };
+                    state.push(StackValue::from_f64(f64::from_ne_bytes(v)));
                 }
 
                 wasm::opcode::I32_LOAD8_S => {
-                    todo!()
+                    let Some(v) = state.load_op() else { todo!() };
+                    state.push(StackValue::from_i32(i8::from_ne_bytes(v) as i32));
                 }
 
                 wasm::opcode::I32_LOAD8_U => {
-                    todo!()
+                    let Some(v) = state.load_op() else { todo!() };
+                    state.push(StackValue::from_i32(u8::from_ne_bytes(v) as i32));
                 }
 
                 wasm::opcode::I32_LOAD16_S => {
-                    todo!()
+                    let Some(v) = state.load_op() else { todo!() };
+                    state.push(StackValue::from_i32(i16::from_ne_bytes(v) as i32));
                 }
 
                 wasm::opcode::I32_LOAD16_U => {
-                    todo!()
+                    let Some(v) = state.load_op() else { todo!() };
+                    state.push(StackValue::from_i32(u16::from_ne_bytes(v) as i32));
                 }
 
                 wasm::opcode::I64_LOAD8_S => {
-                    todo!()
+                    let Some(v) = state.load_op() else { todo!() };
+                    state.push(StackValue::from_i64(i8::from_ne_bytes(v) as i64));
                 }
 
                 wasm::opcode::I64_LOAD8_U => {
-                    todo!()
+                    let Some(v) = state.load_op() else { todo!() };
+                    state.push(StackValue::from_i64(u8::from_ne_bytes(v) as i64));
                 }
 
                 wasm::opcode::I64_LOAD16_S => {
-                    todo!()
+                    let Some(v) = state.load_op() else { todo!() };
+                    state.push(StackValue::from_i64(i16::from_ne_bytes(v) as i64));
                 }
 
                 wasm::opcode::I64_LOAD16_U => {
-                    todo!()
+                    let Some(v) = state.load_op() else { todo!() };
+                    state.push(StackValue::from_i64(u16::from_ne_bytes(v) as i64));
                 }
 
                 wasm::opcode::I64_LOAD32_S => {
-                    todo!()
+                    let Some(v) = state.load_op() else { todo!() };
+                    state.push(StackValue::from_i64(i32::from_ne_bytes(v) as i64));
                 }
 
                 wasm::opcode::I64_LOAD32_U => {
-                    todo!()
+                    let Some(v) = state.load_op() else { todo!() };
+                    state.push(StackValue::from_i64(u32::from_ne_bytes(v) as i64));
                 }
 
                 wasm::opcode::I32_STORE => {
-                    todo!()
+                    let v = state.pop().as_i32();
+                    let Some(()) = state.store_op(v.to_ne_bytes()) else { todo!() };
                 }
 
                 wasm::opcode::I64_STORE => {
-                    todo!()
+                    let v = state.pop().as_i64();
+                    let Some(()) = state.store_op(v.to_ne_bytes()) else { todo!() };
                 }
 
                 wasm::opcode::F32_STORE => {
-                    todo!()
+                    let v = state.pop().as_f32();
+                    let Some(()) = state.store_op(v.to_ne_bytes()) else { todo!() };
                 }
 
                 wasm::opcode::F64_STORE => {
-                    todo!()
+                    let v = state.pop().as_f64();
+                    let Some(()) = state.store_op(v.to_ne_bytes()) else { todo!() };
                 }
 
                 wasm::opcode::I32_STORE8 => {
-                    todo!()
+                    let v = state.pop().as_i32() as u8;
+                    let Some(()) = state.store_op(v.to_ne_bytes()) else { todo!() };
                 }
 
                 wasm::opcode::I32_STORE16 => {
-                    todo!()
+                    let v = state.pop().as_i32() as u16;
+                    let Some(()) = state.store_op(v.to_ne_bytes()) else { todo!() };
                 }
 
                 wasm::opcode::I64_STORE8 => {
-                    todo!()
+                    let v = state.pop().as_i64() as u8;
+                    let Some(()) = state.store_op(v.to_ne_bytes()) else { todo!() };
                 }
 
                 wasm::opcode::I64_STORE16 => {
-                    todo!()
+                    let v = state.pop().as_i64() as u16;
+                    let Some(()) = state.store_op(v.to_ne_bytes()) else { todo!() };
                 }
 
                 wasm::opcode::I64_STORE32 => {
-                    todo!()
+                    let v = state.pop().as_i64() as u32;
+                    let Some(()) = state.store_op(v.to_ne_bytes()) else { todo!() };
                 }
 
                 wasm::opcode::MEMORY_SIZE => {

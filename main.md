@@ -1,7 +1,6 @@
 
 - todo:
     - rewrite:
-        - memory ops.
         - wasm test suite.
         - host funcs.
         - wasm types & typed func.
