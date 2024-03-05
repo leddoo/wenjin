@@ -358,7 +358,9 @@ impl Store {
             self.thread.stack.push(StackValue::from_value(*arg)).unwrap_debug();
         }
 
-        self.run_func(func_id.id, bp)?;
+        self.run_func(func_id.id)?;
+
+        debug_assert_eq!(self.thread.stack.len(), bp + ty.rets.len());
 
         // pop rets from stack.
         for i in 0..ty.rets.len() {
@@ -369,25 +371,11 @@ impl Store {
         return Ok(());
     }
 
-    fn run_func(&mut self, id: u32, bp: usize) -> Result<(), Error> {
+    fn run_func(&mut self, id: u32) -> Result<(), Error> {
         let func = &self.funcs[id as usize];
 
         match &func.kind {
-            FuncKind::Interp(f) => {
-                let num_params = self.thread.stack.len() - bp;
-                self.thread.stack.reserve(bp + f.stack_size as usize).map_err(|_| Error::OutOfMemory)?;
-
-                for _ in num_params..f.num_locals as usize {
-                    self.thread.stack.push(StackValue::ZERO).unwrap_debug();
-                }
-
-                self.thread.frames.push_or_alloc(None).map_err(|_| Error::OutOfMemory)?;
-
-                let state = interp::State::new(id, f, bp, &mut self.thread);
-                self.run_interp(state)?;
-
-                Ok(())
-            }
+            FuncKind::Interp(_) => self.run_interp(id),
 
             FuncKind::Temp => unreachable!(),
         }

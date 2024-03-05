@@ -1,16 +1,17 @@
 
 - todo:
     - rewrite:
-        - `run_interp`.
-            - remaining ops.
-        - wasm types & typed func.
+        - memory ops.
         - wasm test suite.
+        - host funcs.
+        - wasm types & typed func.
         - rest of the owl:
             - globals.
             - data.
             - tables.
             - elements.
             - `br_table`.
+            - remaining ops.
     - merge interp stuff into `Store`.
     - `MemoryCtx`.
         - basically just a pointer to `StoreMemory`.

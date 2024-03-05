@@ -5,7 +5,7 @@ use crate::store::{Store, FuncKind, InterpFunc, StackValue, ThreadData, StackFra
 
 
 #[derive(Debug)]
-pub(crate) struct State {
+struct State {
     instance: u32,
     func: u32,
 
@@ -21,28 +21,6 @@ pub(crate) struct State {
 }
 
 impl State {
-    pub fn new(func_id: u32, func: &InterpFunc, bp: usize, thread: &mut ThreadData) -> Self {
-        let stack = thread.stack.as_mut_ptr();
-        unsafe {
-            let bp = stack.add(bp);
-            let sp = stack.add(thread.stack.len());
-            let stack_frame_end = bp.add(func.stack_size as usize);
-            let stack_alloc_end = stack.add(thread.stack.cap());
-            State {
-                instance: func.instance,
-                func: func_id,
-                pc: func.code,
-                code_begin: func.code,
-                code_end: func.code_end,
-                bp,
-                sp,
-                locals_end: sp,
-                stack_frame_end,
-                stack_alloc_end,
-            }
-        }
-    }
-
     #[inline]
     fn push(&mut self, value: StackValue) {
         unsafe {
@@ -128,7 +106,47 @@ impl State {
 }
 
 impl Store {
-    pub(crate) fn run_interp(&mut self, mut state: State) -> Result<(), Error> {
+    pub(crate) fn run_interp(&mut self, init_func: u32) -> Result<(), Error> {
+        let mut state = unsafe {
+            let func = &self.funcs[init_func as usize];
+            let FuncKind::Interp(f) = &func.kind else { unreachable!() };
+
+            let stack = &mut self.thread.stack;
+            if stack.reserve_extra((f.stack_size - f.num_params) as usize).is_err() {
+                todo!()
+            }
+
+            let stack_ptr = stack.as_mut_ptr();
+
+            let sp = stack_ptr.add(stack.len());
+            let bp = sp.sub(f.num_params as usize);
+            let locals_end = bp.add(f.num_locals as usize);
+            let stack_frame_end = bp.add(f.stack_size as usize);
+            let stack_alloc_end = stack_ptr.add(stack.cap());
+
+            // init locals.
+            for i in 0..(f.num_locals - f.num_params) as usize {
+                *sp.add(i) = StackValue::ZERO;
+            }
+            let sp = locals_end;
+
+
+            self.thread.frames.push_or_alloc(None).map_err(|_| Error::OutOfMemory)?;
+
+            State {
+                instance: f.instance,
+                func: init_func,
+                pc: f.code,
+                code_begin: f.code,
+                code_end: f.code_end,
+                bp,
+                sp,
+                locals_end,
+                stack_frame_end,
+                stack_alloc_end,
+            }
+        };
+
         loop {
             let op = state.next_u8();
             match op {
