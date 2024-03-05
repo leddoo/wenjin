@@ -61,49 +61,49 @@ pub fn dump(code: &[u8]) {
             wasm::opcode::BLOCK |
             wasm::opcode::LOOP => (),
             wasm::opcode::IF => { jump(&mut reader); }
-            wasm::opcode::ELSE => { todo!() }
+            wasm::opcode::ELSE => {}
             wasm::opcode::END => {}
             wasm::opcode::BR => { jump(&mut reader); }
             wasm::opcode::BR_IF => { jump(&mut reader); }
             wasm::opcode::BR_TABLE => { todo!() }
             wasm::opcode::RETURN => { imm_i32(&mut reader); }
             wasm::opcode::CALL => { imm_i32(&mut reader); }
-            wasm::opcode::CALL_INDIRECT => { todo!() }
+            wasm::opcode::CALL_INDIRECT => { imm_i32(&mut reader); imm_i32(&mut reader) }
             wasm::opcode::DROP |
             wasm::opcode::SELECT => (),
             wasm::opcode::TYPED_SELECT => unreachable!(),
             wasm::opcode::LOCAL_GET => { imm_i32(&mut reader); }
             wasm::opcode::LOCAL_SET => { imm_i32(&mut reader); }
             wasm::opcode::LOCAL_TEE => { imm_i32(&mut reader); }
-            wasm::opcode::GLOBAL_GET => { todo!() }
-            wasm::opcode::GLOBAL_SET => { todo!() }
+            wasm::opcode::GLOBAL_GET => { imm_i32(&mut reader) }
+            wasm::opcode::GLOBAL_SET => { imm_i32(&mut reader) }
             wasm::opcode::TABLE_GET => { todo!() }
             wasm::opcode::TABLE_SET => { todo!() }
-            wasm::opcode::I32_LOAD => { todo!() }
-            wasm::opcode::I64_LOAD => { todo!() }
-            wasm::opcode::F32_LOAD => { todo!() }
-            wasm::opcode::F64_LOAD => { todo!() }
-            wasm::opcode::I32_LOAD8_S => { todo!() }
-            wasm::opcode::I32_LOAD8_U => { todo!() }
-            wasm::opcode::I32_LOAD16_S => { todo!() }
-            wasm::opcode::I32_LOAD16_U => { todo!() }
-            wasm::opcode::I64_LOAD8_S => { todo!() }
-            wasm::opcode::I64_LOAD8_U => { todo!() }
-            wasm::opcode::I64_LOAD16_S => { todo!() }
-            wasm::opcode::I64_LOAD16_U => { todo!() }
-            wasm::opcode::I64_LOAD32_S => { todo!() }
-            wasm::opcode::I64_LOAD32_U => { todo!() }
-            wasm::opcode::I32_STORE => { todo!() }
-            wasm::opcode::I64_STORE => { todo!() }
-            wasm::opcode::F32_STORE => { todo!() }
-            wasm::opcode::F64_STORE => { todo!() }
-            wasm::opcode::I32_STORE8 => { todo!() }
-            wasm::opcode::I32_STORE16 => { todo!() }
-            wasm::opcode::I64_STORE8 => { todo!() }
-            wasm::opcode::I64_STORE16 => { todo!() }
-            wasm::opcode::I64_STORE32 => { todo!() }
-            wasm::opcode::MEMORY_SIZE => { todo!() }
-            wasm::opcode::MEMORY_GROW => { todo!() }
+            wasm::opcode::I32_LOAD => { imm_i32(&mut reader) }
+            wasm::opcode::I64_LOAD => { imm_i32(&mut reader) }
+            wasm::opcode::F32_LOAD => { imm_i32(&mut reader) }
+            wasm::opcode::F64_LOAD => { imm_i32(&mut reader) }
+            wasm::opcode::I32_LOAD8_S => { imm_i32(&mut reader) }
+            wasm::opcode::I32_LOAD8_U => { imm_i32(&mut reader) }
+            wasm::opcode::I32_LOAD16_S => { imm_i32(&mut reader) }
+            wasm::opcode::I32_LOAD16_U => { imm_i32(&mut reader) }
+            wasm::opcode::I64_LOAD8_S => { imm_i32(&mut reader) }
+            wasm::opcode::I64_LOAD8_U => { imm_i32(&mut reader) }
+            wasm::opcode::I64_LOAD16_S => { imm_i32(&mut reader) }
+            wasm::opcode::I64_LOAD16_U => { imm_i32(&mut reader) }
+            wasm::opcode::I64_LOAD32_S => { imm_i32(&mut reader) }
+            wasm::opcode::I64_LOAD32_U => { imm_i32(&mut reader) }
+            wasm::opcode::I32_STORE => { imm_i32(&mut reader) }
+            wasm::opcode::I64_STORE => { imm_i32(&mut reader) }
+            wasm::opcode::F32_STORE => { imm_i32(&mut reader) }
+            wasm::opcode::F64_STORE => { imm_i32(&mut reader) }
+            wasm::opcode::I32_STORE8 => { imm_i32(&mut reader) }
+            wasm::opcode::I32_STORE16 => { imm_i32(&mut reader) }
+            wasm::opcode::I64_STORE8 => { imm_i32(&mut reader) }
+            wasm::opcode::I64_STORE16 => { imm_i32(&mut reader) }
+            wasm::opcode::I64_STORE32 => { imm_i32(&mut reader) }
+            wasm::opcode::MEMORY_SIZE => { imm_i32(&mut reader) }
+            wasm::opcode::MEMORY_GROW => { imm_i32(&mut reader) }
             wasm::opcode::I32_CONST => { imm_i32(&mut reader); }
             wasm::opcode::I64_CONST => { imm_i64(&mut reader); }
             wasm::opcode::F32_CONST => { imm_f32(&mut reader); }
@@ -156,6 +156,7 @@ pub fn dump(code: &[u8]) {
             wasm::opcode::I32_OR |
             wasm::opcode::I32_XOR |
             wasm::opcode::I32_SHL |
+            wasm::opcode::I32_SHR_S |
             wasm::opcode::I32_SHR_U |
             wasm::opcode::I32_ROTL |
             wasm::opcode::I32_ROTR |
@@ -242,8 +243,8 @@ pub fn dump(code: &[u8]) {
             0xfc => {
                 let op = u32::from_ne_bytes(reader.next_array::<4>().unwrap());
                 match op {
-                    wasm::opcode::xfc::MEMORY_COPY => { todo!() }
-                    wasm::opcode::xfc::MEMORY_FILL => { todo!() }
+                    wasm::opcode::xfc::MEMORY_COPY => { imm_i32(&mut reader); imm_i32(&mut reader) }
+                    wasm::opcode::xfc::MEMORY_FILL => { imm_i32(&mut reader) }
 
                     _ => unreachable!()
                 }

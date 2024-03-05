@@ -199,6 +199,25 @@ fn main() {
                     instance = Some(inst);
                 }
 
+                0x05 => {
+                    let name = core::str::from_utf8(read_bytes(&mut reader)).unwrap();
+
+                    let num_args = read_usize(&mut reader);
+                    let args = Vec::from_iter((0..num_args).map(|_| { read_value(&mut reader) }));
+
+                    let inst = instance.unwrap();
+                    let func = store.get_export_func_dyn(inst, name).unwrap();
+
+                    num_tests += 1;
+                    if let Err(e) = store.call_dyn(func, &args, &mut []) {
+                        println!("invoke {name}({args:?})");
+                        println!(" failed with error {e:?}");
+                    }
+                    else {
+                        num_successes += 1;
+                    }
+                }
+
                 0x07 => {
                     let name = core::str::from_utf8(read_bytes(&mut reader)).unwrap();
 

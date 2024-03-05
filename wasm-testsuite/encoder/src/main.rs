@@ -17,6 +17,88 @@ fn convert(wast: &str) -> (Vec<u8>, Vec<Vec<u8>>) {
         output.extend_from_slice(bytes);
     }
 
+    fn push_args(output: &mut Vec<u8>, args: &[wast::WastArg]) -> Result<(), ()> {
+        push_usize(output, args.len());
+        for arg in args {
+            let wast::WastArg::Core(arg) = arg else { unreachable!() };
+            match arg {
+                wast::core::WastArgCore::I32(v) => {
+                    output.push(0x7f);
+                    output.extend_from_slice(&v.to_le_bytes());
+                }
+                wast::core::WastArgCore::I64(v) => {
+                    output.push(0x7e);
+                    output.extend_from_slice(&v.to_le_bytes());
+                }
+                wast::core::WastArgCore::F32(v) => {
+                    output.push(0x7d);
+                    output.extend_from_slice(&v.bits.to_le_bytes());
+                }
+                wast::core::WastArgCore::F64(v) => {
+                    output.push(0x7c);
+                    output.extend_from_slice(&v.bits.to_le_bytes());
+                }
+                wast::core::WastArgCore::V128(_) => return Err(()),
+                wast::core::WastArgCore::RefNull(_) => return Err(()),
+                wast::core::WastArgCore::RefExtern(_) => return Err(()),
+                wast::core::WastArgCore::RefHost(_) => return Err(()),
+            }
+        }
+        return Ok(());
+    }
+
+    fn push_invoke(output: &mut Vec<u8>, invoke: &wast::WastInvoke) -> Result<(), ()> {
+        push_bytes(output, invoke.name.as_bytes());
+        push_args(output, &invoke.args)
+    }
+
+    fn push_rets(output: &mut Vec<u8>, rets: &[wast::WastRet]) -> Result<(), ()> {
+        push_usize(output, rets.len());
+        for ret in rets {
+            let wast::WastRet::Core(ret) = ret else { unreachable!() };
+            match ret {
+                wast::core::WastRetCore::I32(v) => {
+                    output.push(0x7f);
+                    output.extend_from_slice(&v.to_le_bytes());
+                }
+                wast::core::WastRetCore::I64(v) => {
+                    output.push(0x7e);
+                    output.extend_from_slice(&v.to_le_bytes());
+                }
+                wast::core::WastRetCore::F32(v) => {
+                    output.push(0x7d);
+                    let v = match v {
+                        wast::core::NanPattern::CanonicalNan => return Err(()),
+                        wast::core::NanPattern::ArithmeticNan => return Err(()),
+                        wast::core::NanPattern::Value(v) => v,
+                    };
+                    output.extend_from_slice(&v.bits.to_le_bytes());
+                }
+                wast::core::WastRetCore::F64(v) => {
+                    output.push(0x7c);
+                    let v = match v {
+                        wast::core::NanPattern::CanonicalNan => return Err(()),
+                        wast::core::NanPattern::ArithmeticNan => return Err(()),
+                        wast::core::NanPattern::Value(v) => v,
+                    };
+                    output.extend_from_slice(&v.bits.to_le_bytes());
+                }
+                wast::core::WastRetCore::V128(_) => return Err(()),
+                wast::core::WastRetCore::RefNull(_) => return Err(()),
+                wast::core::WastRetCore::RefExtern(_) => return Err(()),
+                wast::core::WastRetCore::RefHost(_) => return Err(()),
+                wast::core::WastRetCore::RefFunc(_) => return Err(()),
+                wast::core::WastRetCore::RefAny => return Err(()),
+                wast::core::WastRetCore::RefEq => return Err(()),
+                wast::core::WastRetCore::RefArray => return Err(()),
+                wast::core::WastRetCore::RefStruct => return Err(()),
+                wast::core::WastRetCore::RefI31 => return Err(()),
+                wast::core::WastRetCore::Either(_) => return Err(()),
+            }
+        }
+        return Ok(());
+    }
+
     for op in &mut wast.directives {
         use wast::WastDirective as WD;
 
@@ -40,8 +122,12 @@ fn convert(wast: &str) -> (Vec<u8>, Vec<Vec<u8>>) {
                 println!("skip register");
             }
 
-            WD::Invoke(_) => {
-                println!("skip invoke");
+            WD::Invoke(invoke) => {
+                let mut cmd = vec![];
+                cmd.push(0x05);
+                if push_invoke(&mut cmd, invoke).is_ok() {
+                    output.extend_from_slice(&cmd);
+                }
             }
 
             WD::AssertTrap { span: _, exec: _, message: _ } => {
@@ -50,89 +136,18 @@ fn convert(wast: &str) -> (Vec<u8>, Vec<Vec<u8>>) {
 
             WD::AssertReturn { span: _, exec, results } => {
                 match exec {
-                    wast::WastExecute::Invoke(invoke) => 'err: {
+                    wast::WastExecute::Invoke(invoke) => {
                         if invoke.module.is_some() {
                             println!("skip assert return (module id)");
-                            break 'err;
                         }
-
-                        let mut cmd = vec![];
-
-                        cmd.push(0x07);
-                        push_bytes(&mut cmd, invoke.name.as_bytes());
-
-                        push_usize(&mut cmd, invoke.args.len());
-                        for arg in &invoke.args {
-                            let wast::WastArg::Core(arg) = arg else { unreachable!() };
-                            match arg {
-                                wast::core::WastArgCore::I32(v) => {
-                                    cmd.push(0x7f);
-                                    cmd.extend_from_slice(&v.to_le_bytes());
-                                }
-                                wast::core::WastArgCore::I64(v) => {
-                                    cmd.push(0x7e);
-                                    cmd.extend_from_slice(&v.to_le_bytes());
-                                }
-                                wast::core::WastArgCore::F32(v) => {
-                                    cmd.push(0x7d);
-                                    cmd.extend_from_slice(&v.bits.to_le_bytes());
-                                }
-                                wast::core::WastArgCore::F64(v) => {
-                                    cmd.push(0x7c);
-                                    cmd.extend_from_slice(&v.bits.to_le_bytes());
-                                }
-                                wast::core::WastArgCore::V128(_) => break 'err,
-                                wast::core::WastArgCore::RefNull(_) => break 'err,
-                                wast::core::WastArgCore::RefExtern(_) => break 'err,
-                                wast::core::WastArgCore::RefHost(_) => break 'err,
+                        else {
+                            let mut cmd = vec![];
+                            cmd.push(0x07);
+                            if push_invoke(&mut cmd, invoke).is_ok()
+                            && push_rets(&mut cmd, results).is_ok() {
+                                output.extend_from_slice(&cmd);
                             }
                         }
-
-                        push_usize(&mut cmd, results.len());
-                        for ret in results {
-                            let wast::WastRet::Core(ret) = ret else { unreachable!() };
-                            match ret {
-                                wast::core::WastRetCore::I32(v) => {
-                                    cmd.push(0x7f);
-                                    cmd.extend_from_slice(&v.to_le_bytes());
-                                }
-                                wast::core::WastRetCore::I64(v) => {
-                                    cmd.push(0x7e);
-                                    cmd.extend_from_slice(&v.to_le_bytes());
-                                }
-                                wast::core::WastRetCore::F32(v) => {
-                                    cmd.push(0x7d);
-                                    let v = match v {
-                                        wast::core::NanPattern::CanonicalNan => break 'err,
-                                        wast::core::NanPattern::ArithmeticNan => break 'err,
-                                        wast::core::NanPattern::Value(v) => v,
-                                    };
-                                    cmd.extend_from_slice(&v.bits.to_le_bytes());
-                                }
-                                wast::core::WastRetCore::F64(v) => {
-                                    cmd.push(0x7c);
-                                    let v = match v {
-                                        wast::core::NanPattern::CanonicalNan => break 'err,
-                                        wast::core::NanPattern::ArithmeticNan => break 'err,
-                                        wast::core::NanPattern::Value(v) => v,
-                                    };
-                                    cmd.extend_from_slice(&v.bits.to_le_bytes());
-                                }
-                                wast::core::WastRetCore::V128(_) => break 'err,
-                                wast::core::WastRetCore::RefNull(_) => break 'err,
-                                wast::core::WastRetCore::RefExtern(_) => break 'err,
-                                wast::core::WastRetCore::RefHost(_) => break 'err,
-                                wast::core::WastRetCore::RefFunc(_) => break 'err,
-                                wast::core::WastRetCore::RefAny => break 'err,
-                                wast::core::WastRetCore::RefEq => break 'err,
-                                wast::core::WastRetCore::RefArray => break 'err,
-                                wast::core::WastRetCore::RefStruct => break 'err,
-                                wast::core::WastRetCore::RefI31 => break 'err,
-                                wast::core::WastRetCore::Either(_) => break 'err,
-                            }
-                        }
-
-                        output.extend_from_slice(&cmd);
                     }
 
                     wast::WastExecute::Wat(_) => {
