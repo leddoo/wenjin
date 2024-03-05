@@ -365,7 +365,7 @@ impl Default for ModuleLimits {
 }
 
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Module<'a> {
     pub types:      &'a [FuncType<'a>],
     pub imports:    Imports<'a>,

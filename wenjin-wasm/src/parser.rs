@@ -370,9 +370,9 @@ impl<'a> Parser<'a> {
                 for _ in 0..num_labels {
                     self.parse_u32()?;
                 }
-                self.parse_u32()?;
+                let default = self.parse_u32()?;
 
-                v.visit_br_table(())
+                v.visit_br_table(default)
             }
             RETURN          => v.visit_return(),
             CALL            => v.visit_call(self.parse_u32()?),

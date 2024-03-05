@@ -226,8 +226,11 @@ impl wasm::OperatorVisitor for Compiler {
         self.jump(label);
     }
 
-    fn visit_br_table(&mut self, table: ()) -> Self::Output {
-        self.push_byte(opcode::UNREACHABLE);
+    fn visit_br_table(&mut self, default: u32) -> Self::Output {
+        // @temp.
+        self.push_byte(opcode::DROP);
+        self.push_byte(opcode::BR);
+        self.jump(default);
     }
 
     fn visit_return(&mut self) -> Self::Output {

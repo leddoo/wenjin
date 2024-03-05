@@ -211,7 +211,7 @@ impl Store {
             let op = state.next_u8();
             match op {
                 wasm::opcode::UNREACHABLE => {
-                    todo!()
+                    return Err(Error::Unreachable);
                 }
 
                 wasm::opcode::NOP => {}
@@ -395,7 +395,7 @@ impl Store {
                 }
 
                 wasm::opcode::DROP => {
-                    todo!()
+                    state.pop();
                 }
 
                 wasm::opcode::SELECT => {

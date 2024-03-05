@@ -9,6 +9,7 @@ mod interp;
 pub enum Error {
     OutOfMemory,
     InvalidHandle,
+    Unreachable,
 }
 
 

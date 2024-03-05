@@ -11,7 +11,7 @@ macro_rules! for_each_operator {
             End => visit_end
             Br { label: u32 } => visit_br
             BrIf { label: u32 }=> visit_br_if
-            BrTable { table: () } => visit_br_table
+            BrTable { table: u32 } => visit_br_table
             Return => visit_return
             Call { func: $crate::FuncIdx } => visit_call
             CallIndirect { ty: $crate::TypeIdx, table: $crate::TableIdx } => visit_call_indirect

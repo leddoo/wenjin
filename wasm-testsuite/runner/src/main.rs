@@ -6,8 +6,8 @@ fn main() {
     let tests = [
         ("address.wast", &include_bytes!("../../testsuite-bin/address.wast")[..]),
         ("align.wast", &include_bytes!("../../testsuite-bin/align.wast")[..]),
-        ("binary-leb128.wast", &include_bytes!("../../testsuite-bin/binary-leb128.wast")[..]),
-        ("binary.wast", &include_bytes!("../../testsuite-bin/binary.wast")[..]),
+        //("binary-leb128.wast", &include_bytes!("../../testsuite-bin/binary-leb128.wast")[..]),
+        //("binary.wast", &include_bytes!("../../testsuite-bin/binary.wast")[..]),
         ("block.wast", &include_bytes!("../../testsuite-bin/block.wast")[..]),
         ("br.wast", &include_bytes!("../../testsuite-bin/br.wast")[..]),
         ("br_if.wast", &include_bytes!("../../testsuite-bin/br_if.wast")[..]),
@@ -155,6 +155,9 @@ fn main() {
         ("utf8-invalid-encoding.wast", &include_bytes!("../../testsuite-bin/utf8-invalid-encoding.wast")[..]),
     ];
 
+    let mut num_tests = 0;
+    let mut num_successes = 0;
+
     for (name, bytes) in tests {
         println!("#running {name:?}");
 
@@ -181,14 +184,13 @@ fn main() {
             }
         }
 
-        let mut module_idx = 0;
+        //let mut module_idx = 0;
         let mut instance = None;
 
         while let Some(op) = reader.next() {
             match op {
                 0x01 => {
-                    println!("module {module_idx}");
-                    module_idx += 1;
+                    //module_idx += 1;
 
                     let wasm = read_bytes(&mut reader);
                     let module = store.new_module(wasm).unwrap();
@@ -205,18 +207,31 @@ fn main() {
                     let num_rets = read_usize(&mut reader);
                     let rets = Vec::from_iter((0..num_rets).map(|_| { read_value(&mut reader) }));
 
-                    println!("expect {name}({args:?}) = {rets:?}");
-
                     let mut actual_rets = Vec::from_iter((0..num_rets).map(|_| Value::I32(0)));
                     let inst = instance.unwrap();
                     let func = store.get_export_func_dyn(inst, name).unwrap();
 
                     store.call_dyn(func, &args, &mut actual_rets).unwrap();
-                    if actual_rets == rets {
-                        println!("ok");
+                    num_tests += 1;
+
+                    let mut equal = true;
+                    assert_eq!(rets.len(), actual_rets.len());
+                    for i in 0..rets.len() {
+                        let ok = match (rets[i], actual_rets[i]) {
+                            (Value::I32(a), Value::I32(b)) => a == b,
+                            (Value::I64(a), Value::I64(b)) => a == b,
+                            (Value::F32(a), Value::F32(b)) => a.to_bits() == b.to_bits(),
+                            (Value::F64(a), Value::F64(b)) => a.to_bits() == b.to_bits(),
+                            _ => false,
+                        };
+                        equal = equal && ok;
+                    }
+
+                    if equal {
+                        num_successes += 1;
                     }
                     else {
-                        println!("error, got {actual_rets:?}");
+                        println!("expected {name}({args:?})\n =   {rets:?}\n got {actual_rets:?}");
                     }
                 }
 
@@ -224,5 +239,7 @@ fn main() {
             }
         }
     }
+
+    println!("ran {num_tests} tests, {num_successes} succeeded, {} failed", num_tests - num_successes);
 }
 

@@ -248,6 +248,9 @@ impl Store {
     pub fn new_instance(&mut self, module_id: ModuleId, imports: &[(&str, &str, Extern)]) -> Result<InstanceId, Error> {
         let module = self.modules.get(module_id.id as usize).ok_or_else(|| todo!())?;
 
+        // @temp
+        let wasm = module.wasm.clone();
+
         let id = InstanceId {
             id: self.instances.len().try_into().map_err(|_| Error::OutOfMemory)?,
         };
@@ -255,6 +258,7 @@ impl Store {
         if imports.len() > 0 || module.wasm.imports.imports.len() > 0 {
             todo!()
         }
+
 
         let mut funcs = ManualVec::with_cap(module.funcs.len()).ok_or_else(|| Error::OutOfMemory)?;
         self.funcs.reserve_extra(module.funcs.len()).map_err(|_| Error::OutOfMemory)?;
@@ -283,14 +287,45 @@ impl Store {
             }).unwrap_debug();
         }
 
+
         let tables = ManualVec::new();
+
 
         let mut memories = ManualVec::with_cap(module.wasm.memories.len()).ok_or_else(|| Error::OutOfMemory)?;
         for mem in module.wasm.memories {
             memories.push(self.new_memory(mem.limits)?.id).unwrap_debug();
         }
 
+
         let globals = ManualVec::new();
+
+
+        for data in wasm.datas {
+            let bytes = data.values;
+            match data.kind {
+                wasm::DataKind::Passive => (),
+                wasm::DataKind::Active { mem, offset } => {
+                    let mem_id = memories[mem as usize];
+                    let mut mem = Memory::new(&self.memories[mem_id as usize]);
+                    let (ptr, mem_len) = mem.as_mut_ptr();
+
+                    let Some(end) = (offset as usize).checked_add(bytes.len()) else {
+                        todo!()
+                    };
+                    if end > mem_len {
+                        todo!()
+                    }
+
+                    unsafe {
+                        core::ptr::copy_nonoverlapping(
+                            bytes.as_ptr(),
+                            ptr.add(offset as usize),
+                            bytes.len());
+                    }
+                }
+            }
+        }
+
 
         self.instances.push_or_alloc(InstanceData {
             module: module_id.id,

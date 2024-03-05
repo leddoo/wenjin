@@ -1,7 +1,7 @@
 
 - todo:
     - rewrite:
-        - active data sections.
+        - pass more tests.
         - host funcs.
         - wasm types & typed func.
         - rest of the owl:
@@ -12,6 +12,7 @@
             - `br_table`.
             - remaining ops.
             - clone the wasm (cause we have dangling refs).
+            - validate non-code sections (incl elem, data).
     - merge interp stuff into `Store`.
     - `MemoryCtx`.
         - basically just a pointer to `StoreMemory`.

@@ -375,10 +375,12 @@ impl<'a> OperatorVisitor for Validator<'a> {
         self.push_n(self.frame_br_types(&frame))
     }
 
-    fn visit_br_table(&mut self, table: ()) -> Self::Output {
-        let _ = table;
+    fn visit_br_table(&mut self, default: u32) -> Self::Output {
+        // @temp.
+        let frame = self.label(default)?;
         self.expect(ValueType::I32)?;
-        // @todo: validate br targets.
+        self.expect_n(self.frame_br_types(&frame))?;
+        self.push_n(self.frame_br_types(&frame))?;
         self.unreachable();
         return Ok(());
     }
