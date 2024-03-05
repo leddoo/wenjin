@@ -1,8 +1,14 @@
+use core::hint::unreachable_unchecked;
+
 use crate::Error;
-use crate::store::{Store, InterpFunc, StackValue, ThreadData};
+use crate::store::{Store, FuncKind, InterpFunc, StackValue, ThreadData, StackFrame};
 
 
+#[derive(Debug)]
 pub(crate) struct State {
+    instance: u32,
+    func: u32,
+
     pc: *mut u8,
     code_begin: *const u8,
     code_end: *const u8,
@@ -10,32 +16,37 @@ pub(crate) struct State {
     bp: *mut StackValue,
     sp: *mut StackValue,
     locals_end: *mut StackValue,
-    stack_end: *mut StackValue,
+    stack_frame_end: *mut StackValue,
+    stack_alloc_end: *mut StackValue,
 }
 
 impl State {
-    pub fn new(func: &InterpFunc, bp: usize, thread: &mut ThreadData) -> Self {
-        dbg!(func);
-
+    pub fn new(func_id: u32, func: &InterpFunc, bp: usize, thread: &mut ThreadData) -> Self {
         let stack = thread.stack.as_mut_ptr();
-        let bp = unsafe { stack.add(bp) };
-        let sp = unsafe { stack.add(thread.stack.len()) };
-        let stack_end = unsafe { bp.add(func.stack_size as usize) };
-        Self {
-            pc: func.code,
-            code_begin: func.code,
-            code_end: func.code_end,
-            bp,
-            sp,
-            locals_end: sp,
-            stack_end,
+        unsafe {
+            let bp = stack.add(bp);
+            let sp = stack.add(thread.stack.len());
+            let stack_frame_end = bp.add(func.stack_size as usize);
+            let stack_alloc_end = stack.add(thread.stack.cap());
+            State {
+                instance: func.instance,
+                func: func_id,
+                pc: func.code,
+                code_begin: func.code,
+                code_end: func.code_end,
+                bp,
+                sp,
+                locals_end: sp,
+                stack_frame_end,
+                stack_alloc_end,
+            }
         }
     }
 
     #[inline]
     fn push(&mut self, value: StackValue) {
         unsafe {
-            debug_assert!(self.sp < self.stack_end);
+            debug_assert!(self.sp < self.stack_frame_end);
             *self.sp = value;
             self.sp = self.sp.add(1);
         }
@@ -149,7 +160,7 @@ impl Store {
                 wasm::opcode::BR_IF => {
                     let delta = state.next_jump();
                     let cond = state.pop().as_i32();
-                    if dbg!(cond) != 0 {
+                    if cond != 0 {
                         state.jump(delta);
                     }
                 }
@@ -158,29 +169,115 @@ impl Store {
                     todo!()
                 }
 
-                wasm::opcode::RETURN => {
+                wasm::opcode::RETURN => unsafe {
                     let num_rets = state.next_u32() as usize;
-                    unsafe {
-                        let begin = state.sp.sub(num_rets);
-                        if num_rets == 1 {
-                            *state.bp = *begin;
-                        }
-                        else if num_rets != 0 {
-                            core::ptr::copy(begin, state.bp, num_rets)
-                        }
+                    let rets = state.sp.sub(num_rets);
+                    if num_rets == 1 {
+                        *state.bp = *rets;
+                    }
+                    else if num_rets != 0 {
+                        core::ptr::copy(rets, state.bp, num_rets)
                     }
 
-                    let frame = unsafe { self.thread.frames.pop().unwrap_unchecked() };
-                    if frame.is_none() {
-                        return Ok(())
+                    let frame = self.thread.frames.pop().unwrap_unchecked();
+                    if let Some(frame) = frame {
+                        let bp = state.bp.sub(frame.bp_offset as usize);
+                        let sp = state.bp.add(num_rets);
+
+                        let func = &self.funcs[frame.func as usize];
+                        let FuncKind::Interp(f) = &func.kind else { unreachable_unchecked() };
+
+                        state = State {
+                            instance: frame.instance,
+                            func: frame.func,
+                            pc: frame.pc.as_ptr(),
+                            code_begin: f.code,
+                            code_end: f.code_end,
+                            bp,
+                            sp,
+                            locals_end: bp.add(f.num_locals as usize),
+                            stack_frame_end: bp.add(f.stack_size as usize),
+                            stack_alloc_end: state.stack_alloc_end,
+                        };
                     }
                     else {
-                        todo!()
+                        let sp = state.bp.add(num_rets);
+                        let stack = &mut self.thread.stack;
+                        stack.set_len(sp.offset_from(stack.as_ptr()) as usize);
+
+                        return Ok(())
                     }
                 }
 
                 wasm::opcode::CALL => {
-                    todo!()
+                    let func_idx = state.next_u32();
+
+                    let inst = &self.instances[state.instance as usize];
+                    let func_idx = inst.funcs[func_idx as usize];
+
+                    let func = &self.funcs[func_idx as usize];
+                    match &func.kind {
+                        FuncKind::Interp(f) => unsafe {
+                            let bp_offset = state.sp.offset_from(state.bp) as u32 - f.num_params;
+
+                            // grow stack.
+                            let (sp, stack_alloc_end);
+                            let stack_remaining = state.stack_alloc_end.offset_from(state.sp) as usize;
+                            let stack_required = (f.stack_size - f.num_params) as usize;
+                            if stack_remaining >= stack_required {
+                                sp = state.sp;
+                                stack_alloc_end = state.stack_alloc_end;
+                            }
+                            else {
+                                let stack = &mut self.thread.stack;
+
+                                let stack_len = state.sp.offset_from(stack.as_ptr()) as usize;
+                                stack.set_len(stack_len);
+                                if stack.reserve_extra(stack_required).is_err() {
+                                    todo!()
+                                }
+
+                                let stack_ptr = stack.as_mut_ptr();
+                                sp = stack_ptr.add(stack_len);
+                                stack_alloc_end = stack_ptr.add(stack.cap());
+                            }
+
+                            let bp = sp.sub(f.num_params as usize);
+                            let locals_end = bp.add(f.num_locals as usize);
+                            let stack_frame_end = bp.add(f.stack_size as usize);
+
+                            // init locals.
+                            for i in 0..(f.num_locals - f.num_params) as usize {
+                                *sp.add(i) = StackValue::ZERO;
+                            }
+                            let sp = locals_end;
+
+                            let frame = StackFrame {
+                                instance: state.instance,
+                                func: state.func,
+                                pc: core::ptr::NonNull::new_unchecked(state.pc),
+                                bp_offset,
+                            };
+                            if self.thread.frames.push_or_alloc(Some(frame)).is_err() {
+                                todo!()
+                            }
+
+                            state = State {
+                                instance: f.instance,
+                                func: func_idx,
+                                pc: f.code,
+                                code_begin: f.code,
+                                code_end: f.code_end,
+                                bp,
+                                sp,
+                                locals_end,
+                                stack_frame_end,
+                                stack_alloc_end,
+                            };
+                        }
+
+                        FuncKind::Temp => unreachable!(),
+                    }
                 }
 
                 wasm::opcode::CALL_INDIRECT => {

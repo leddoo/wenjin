@@ -79,6 +79,7 @@ pub(crate) struct FuncData {
 
 pub(crate) enum FuncKind {
     Interp(InterpFunc),
+    Temp,
 }
 
 #[derive(Debug)]
@@ -87,6 +88,7 @@ pub(crate) struct InterpFunc {
     pub code: *mut u8,
     pub code_end: *const u8,
     pub stack_size: u32,
+    pub num_params: u32,
     pub num_locals: u32,
 }
 
@@ -165,8 +167,10 @@ impl StackValue {
 }
 
 pub(crate) struct StackFrame {
+    pub instance: u32,
+    pub func: u32,
     pub pc: NonNull<u8>,
-    pub bp: usize,
+    pub bp_offset: u32,
 }
 
 pub(crate) struct ThreadData {
@@ -273,6 +277,7 @@ impl Store {
                     code,
                     code_end,
                     stack_size: func.stack_size,
+                    num_params: func.ty.params.len() as u32,
                     num_locals: func.num_locals,
                 }),
             }).unwrap_debug();
@@ -378,11 +383,13 @@ impl Store {
 
                 self.thread.frames.push_or_alloc(None).map_err(|_| Error::OutOfMemory)?;
 
-                let state = interp::State::new(f, bp, &mut self.thread);
+                let state = interp::State::new(id, f, bp, &mut self.thread);
                 self.run_interp(state)?;
 
                 Ok(())
             }
+
+            FuncKind::Temp => unreachable!(),
         }
     }
 

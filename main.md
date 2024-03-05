@@ -2,7 +2,6 @@
 - todo:
     - rewrite:
         - `run_interp`.
-            - calls.
             - remaining ops.
         - wasm types & typed func.
         - wasm test suite.
