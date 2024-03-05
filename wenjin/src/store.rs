@@ -2,7 +2,7 @@
 use core::cell::UnsafeCell;
 use core::ptr::NonNull;
 
-use sti::traits::{CopyIt, UnwrapDebug};
+use sti::traits::UnwrapDebug;
 use sti::alloc::GlobalAlloc;
 use sti::arena::Arena;
 use sti::boks::Box;

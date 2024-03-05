@@ -1,7 +1,7 @@
 
 - todo:
     - rewrite:
-        - wasm test suite runner.
+        - active data sections.
         - host funcs.
         - wasm types & typed func.
         - rest of the owl:
@@ -11,6 +11,7 @@
             - elements.
             - `br_table`.
             - remaining ops.
+            - clone the wasm (cause we have dangling refs).
     - merge interp stuff into `Store`.
     - `MemoryCtx`.
         - basically just a pointer to `StoreMemory`.
