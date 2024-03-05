@@ -36,24 +36,19 @@ pub(crate) struct Compiler {
     oom: bool,
 }
 
-#[derive(Debug)]
-enum Label {
-    Known(u32),
-    Unknown { last_use: u32 }, // u32::MAX -> None.
-}
+// address of the label.
+type Label = u32;
+
+// last use of the label.
+// u32::MAX -> none.
+type LabelUse = u32;
 
 #[derive(Debug)]
-enum FrameKind {
-    Block,
-    If { else_use: u32 },
-    Else,
-    Loop,
-}
-
-#[derive(Debug)]
-struct Frame {
-    kind: FrameKind,
-    label: Label,
+enum Frame {
+    Block { after: LabelUse },
+    If { after: LabelUse, else_use: u32 },
+    Else { after: LabelUse },
+    Loop { head: Label },
 }
 
 impl Compiler {
@@ -120,23 +115,25 @@ impl Compiler {
         }
     }
 
-    fn jump(&mut self, label: u32) {
+    fn jump(&mut self, label: Label) {
         let frame = self.frames.rev_mut(label as usize);
-        match &mut frame.label {
-            Label::Known(dst) => {
-                let delta = *dst as i32 - self.code.len() as i32;
-                self.push_bytes(&delta.to_ne_bytes());
+        match frame {
+            Frame::Block { after } |
+            Frame::If { after, else_use: _ } |
+            Frame::Else { after } => {
+                let prev = *after;
+                *after = self.code.len() as u32;
+                self.push_bytes(&prev.to_ne_bytes());
             }
 
-            Label::Unknown { last_use } => {
-                let prev = *last_use;
-                *last_use = self.code.len() as u32;
-                self.push_bytes(&prev.to_ne_bytes());
+            Frame::Loop { head } => {
+                let delta = *head as i32 - self.code.len() as i32;
+                self.push_bytes(&delta.to_ne_bytes());
             }
         }
     }
 
-    fn patch_jumps(&mut self, last_use: u32, dst: u32) {
+    fn patch_jumps(&mut self, last_use: LabelUse, dst: Label) {
         let mut at = last_use;
         while at != u32::MAX {
             let slice = &mut self.code[at as usize .. at as usize + 4];
@@ -164,42 +161,34 @@ impl wasm::OperatorVisitor for Compiler {
 
     fn visit_block(&mut self, _ty: BlockType) -> Self::Output {
         self.push_byte(opcode::BLOCK);
-        self.push_frame(Frame {
-            kind: FrameKind::Block,
-            label: Label::Unknown { last_use: u32::MAX },
-        });
+        self.push_frame(Frame::Block { after: u32::MAX });
     }
 
     fn visit_loop(&mut self, _ty: BlockType) -> Self::Output {
         self.push_byte(opcode::LOOP);
-        self.push_frame(Frame {
-            kind: FrameKind::Loop,
-            label: Label::Known(self.code.len() as u32),
-        });
+        self.push_frame(Frame::Loop { head: self.code.len() as u32 });
     }
 
     fn visit_if(&mut self, _ty: BlockType) -> Self::Output {
         self.push_byte(opcode::IF);
         let else_use = self.code.len() as u32;
         self.push_bytes(&u32::MAX.to_ne_bytes());
-        self.push_frame(Frame {
-            kind: FrameKind::If { else_use },
-            label: Label::Unknown { last_use: u32::MAX },
-        });
+        self.push_frame(Frame::If { after: u32::MAX, else_use });
     }
 
     fn visit_else(&mut self) -> Self::Output {
+        // jump to end (for then branch).
+        self.push_byte(opcode::BR);
+        self.jump(0);
+
         let frame = self.frames.pop().expect("invalid wasm");
-        let FrameKind::If { else_use } = frame.kind else { panic!("invalid wasm") };
+        let Frame::If { after, else_use } = frame else { panic!("invalid wasm") };
 
         let else_offset = self.code.len() as u32;
         self.patch_jumps(else_use, else_offset);
 
         self.push_byte(opcode::ELSE);
-        self.push_frame(Frame {
-            kind: FrameKind::Else,
-            label: Label::Unknown { last_use: u32::MAX },
-        });
+        self.push_frame(Frame::Else { after });
     }
 
     fn visit_end(&mut self) -> Self::Output {
@@ -210,13 +199,18 @@ impl wasm::OperatorVisitor for Compiler {
         };
 
         let offset = self.code.len() as u32;
+        match frame {
+            Frame::Block { after } |
+            Frame::Else { after } => {
+                self.patch_jumps(after, offset);
+            }
 
-        if let FrameKind::If { else_use } = frame.kind {
-            self.patch_jumps(else_use, offset)
-        }
+            Frame::If { after, else_use } => {
+                self.patch_jumps(after, offset);
+                self.patch_jumps(else_use, offset);
+            }
 
-        if let Label::Unknown { last_use } = frame.label {
-            self.patch_jumps(last_use, offset)
+            Frame::Loop { head: _ } => (),
         }
 
         self.push_byte(opcode::END);

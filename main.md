@@ -2,7 +2,6 @@
 - todo:
     - rewrite:
         - `run_interp`.
-            - fix if/else jumps.
             - calls.
             - remaining ops.
         - wasm types & typed func.
