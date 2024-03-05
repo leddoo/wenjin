@@ -169,12 +169,14 @@ impl<'a> Validator<'a> {
             todo!();
         }
 
+        let height = self.stack.len() as u32;
+
         self.push_n(self.block_begin_types(ty))?;
 
         self.frames.push_or_alloc(ControlFrame {
             kind,
             ty,
-            height: self.stack.len() as u32,
+            height,
             unreachable: self.is_unreachable(),
         }).map_err(|_| todo!())?;
 
@@ -425,7 +427,9 @@ impl<'a> OperatorVisitor for Validator<'a> {
     }
 
     fn visit_drop(&mut self) -> Self::Output {
-        self.pop()?;
+        if !self.is_unreachable() {
+            self.pop()?;
+        }
         return Ok(());
     }
 

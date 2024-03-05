@@ -203,7 +203,7 @@ impl Store {
             .map_err(|_| todo!())?;
 
         let mut validator = wasm::Validator::new(&module);
-        let mut compiler = interp::Compiler::new();
+        let mut compiler = interp::Compiler::new().ok_or_else(|| Error::OutOfMemory)?;
 
         let mut funcs = ManualVec::with_cap(module.codes.len()).ok_or_else(|| Error::OutOfMemory)?;
 

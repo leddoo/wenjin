@@ -10,6 +10,7 @@ pub enum Error {
     OutOfMemory,
     InvalidHandle,
     Unreachable,
+    Unimplemented,
 }
 
 

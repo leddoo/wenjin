@@ -1,7 +1,7 @@
 
 - todo:
     - rewrite:
-        - pass more tests.
+        - fix bugs.
         - host funcs.
         - wasm types & typed func.
         - rest of the owl:

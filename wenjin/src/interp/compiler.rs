@@ -1,5 +1,6 @@
 use core::cell::UnsafeCell;
 
+use sti::traits::UnwrapDebug;
 use sti::alloc::Alloc;
 use sti::boks::Box;
 use sti::manual_vec::ManualVec;
@@ -52,19 +53,20 @@ enum Frame {
 }
 
 impl Compiler {
-    pub fn new() -> Self {
-        Self {
+    pub fn new() -> Option<Self> {
+        Some(Self {
             num_rets: 0,
             code: ManualVec::new(),
-            frames: ManualVec::new(),
+            frames: ManualVec::with_cap(1)?,
             oom: false,
-        }
+        })
     }
 
     pub fn begin_func(&mut self, num_rets: u32) {
         self.num_rets = num_rets;
         self.code.clear();
         self.frames.clear();
+        self.frames.push(Frame::Block { after: u32::MAX }).unwrap_debug();
     }
 
     pub fn peek_code(&self) -> &[u8] {
@@ -72,6 +74,7 @@ impl Compiler {
     }
 
     pub fn code<A: Alloc>(&self, alloc: A) -> Option<Box<UnsafeCell<[u8]>, A>> {
+        debug_assert_eq!(self.frames.len(), 0);
         if self.oom {
             return None;
         }
@@ -192,11 +195,7 @@ impl wasm::OperatorVisitor for Compiler {
     }
 
     fn visit_end(&mut self) -> Self::Output {
-        let Some(frame) = self.frames.pop() else {
-            self.push_byte(opcode::RETURN);
-            self.push_bytes(&self.num_rets.to_ne_bytes());
-            return;
-        };
+        let frame = self.frames.pop().unwrap();
 
         let offset = self.code.len() as u32;
         match frame {
@@ -214,6 +213,11 @@ impl wasm::OperatorVisitor for Compiler {
         }
 
         self.push_byte(opcode::END);
+
+        if self.frames.len() == 0 {
+            self.push_byte(opcode::RETURN);
+            self.push_bytes(&self.num_rets.to_ne_bytes());
+        }
     }
 
     fn visit_br(&mut self, label: u32) -> Self::Output {

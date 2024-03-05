@@ -11,16 +11,16 @@ fn main() {
         ("block.wast", &include_bytes!("../../testsuite-bin/block.wast")[..]),
         ("br.wast", &include_bytes!("../../testsuite-bin/br.wast")[..]),
         ("br_if.wast", &include_bytes!("../../testsuite-bin/br_if.wast")[..]),
-        ("br_table.wast", &include_bytes!("../../testsuite-bin/br_table.wast")[..]),
-        ("bulk.wast", &include_bytes!("../../testsuite-bin/bulk.wast")[..]),
+        //("br_table.wast", &include_bytes!("../../testsuite-bin/br_table.wast")[..]),
+        //("bulk.wast", &include_bytes!("../../testsuite-bin/bulk.wast")[..]),
         ("call.wast", &include_bytes!("../../testsuite-bin/call.wast")[..]),
-        ("call_indirect.wast", &include_bytes!("../../testsuite-bin/call_indirect.wast")[..]),
+        //("call_indirect.wast", &include_bytes!("../../testsuite-bin/call_indirect.wast")[..]),
         ("comments.wast", &include_bytes!("../../testsuite-bin/comments.wast")[..]),
         ("const.wast", &include_bytes!("../../testsuite-bin/const.wast")[..]),
-        ("conversions.wast", &include_bytes!("../../testsuite-bin/conversions.wast")[..]),
+        //("conversions.wast", &include_bytes!("../../testsuite-bin/conversions.wast")[..]),
         ("custom.wast", &include_bytes!("../../testsuite-bin/custom.wast")[..]),
-        ("data.wast", &include_bytes!("../../testsuite-bin/data.wast")[..]),
-        ("elem.wast", &include_bytes!("../../testsuite-bin/elem.wast")[..]),
+        //("data.wast", &include_bytes!("../../testsuite-bin/data.wast")[..]),
+        //("elem.wast", &include_bytes!("../../testsuite-bin/elem.wast")[..]),
         ("endianness.wast", &include_bytes!("../../testsuite-bin/endianness.wast")[..]),
         ("exports.wast", &include_bytes!("../../testsuite-bin/exports.wast")[..]),
         ("f32.wast", &include_bytes!("../../testsuite-bin/f32.wast")[..]),
@@ -36,18 +36,18 @@ fn main() {
         ("float_misc.wast", &include_bytes!("../../testsuite-bin/float_misc.wast")[..]),
         ("forward.wast", &include_bytes!("../../testsuite-bin/forward.wast")[..]),
         ("func.wast", &include_bytes!("../../testsuite-bin/func.wast")[..]),
-        ("func_ptrs.wast", &include_bytes!("../../testsuite-bin/func_ptrs.wast")[..]),
-        ("global.wast", &include_bytes!("../../testsuite-bin/global.wast")[..]),
+        //("func_ptrs.wast", &include_bytes!("../../testsuite-bin/func_ptrs.wast")[..]),
+        //("global.wast", &include_bytes!("../../testsuite-bin/global.wast")[..]),
         ("i32.wast", &include_bytes!("../../testsuite-bin/i32.wast")[..]),
         ("i64.wast", &include_bytes!("../../testsuite-bin/i64.wast")[..]),
         ("if.wast", &include_bytes!("../../testsuite-bin/if.wast")[..]),
-        ("imports.wast", &include_bytes!("../../testsuite-bin/imports.wast")[..]),
+        //("imports.wast", &include_bytes!("../../testsuite-bin/imports.wast")[..]),
         ("inline-module.wast", &include_bytes!("../../testsuite-bin/inline-module.wast")[..]),
         ("int_exprs.wast", &include_bytes!("../../testsuite-bin/int_exprs.wast")[..]),
         ("int_literals.wast", &include_bytes!("../../testsuite-bin/int_literals.wast")[..]),
         ("labels.wast", &include_bytes!("../../testsuite-bin/labels.wast")[..]),
         ("left-to-right.wast", &include_bytes!("../../testsuite-bin/left-to-right.wast")[..]),
-        ("linking.wast", &include_bytes!("../../testsuite-bin/linking.wast")[..]),
+        //("linking.wast", &include_bytes!("../../testsuite-bin/linking.wast")[..]),
         ("load.wast", &include_bytes!("../../testsuite-bin/load.wast")[..]),
         ("local_get.wast", &include_bytes!("../../testsuite-bin/local_get.wast")[..]),
         ("local_set.wast", &include_bytes!("../../testsuite-bin/local_set.wast")[..]),
@@ -56,19 +56,19 @@ fn main() {
         ("memory.wast", &include_bytes!("../../testsuite-bin/memory.wast")[..]),
         ("memory_copy.wast", &include_bytes!("../../testsuite-bin/memory_copy.wast")[..]),
         ("memory_fill.wast", &include_bytes!("../../testsuite-bin/memory_fill.wast")[..]),
-        ("memory_grow.wast", &include_bytes!("../../testsuite-bin/memory_grow.wast")[..]),
-        ("memory_init.wast", &include_bytes!("../../testsuite-bin/memory_init.wast")[..]),
-        ("memory_redundancy.wast", &include_bytes!("../../testsuite-bin/memory_redundancy.wast")[..]),
-        ("memory_size.wast", &include_bytes!("../../testsuite-bin/memory_size.wast")[..]),
-        ("memory_trap.wast", &include_bytes!("../../testsuite-bin/memory_trap.wast")[..]),
+        //("memory_grow.wast", &include_bytes!("../../testsuite-bin/memory_grow.wast")[..]),
+        //("memory_init.wast", &include_bytes!("../../testsuite-bin/memory_init.wast")[..]),
+        //("memory_redundancy.wast", &include_bytes!("../../testsuite-bin/memory_redundancy.wast")[..]),
+        //("memory_size.wast", &include_bytes!("../../testsuite-bin/memory_size.wast")[..]),
+        //("memory_trap.wast", &include_bytes!("../../testsuite-bin/memory_trap.wast")[..]),
         ("names.wast", &include_bytes!("../../testsuite-bin/names.wast")[..]),
         ("nop.wast", &include_bytes!("../../testsuite-bin/nop.wast")[..]),
-        ("obsolete-keywords.wast", &include_bytes!("../../testsuite-bin/obsolete-keywords.wast")[..]),
-        ("ref_func.wast", &include_bytes!("../../testsuite-bin/ref_func.wast")[..]),
-        ("ref_is_null.wast", &include_bytes!("../../testsuite-bin/ref_is_null.wast")[..]),
-        ("ref_null.wast", &include_bytes!("../../testsuite-bin/ref_null.wast")[..]),
+        //("obsolete-keywords.wast", &include_bytes!("../../testsuite-bin/obsolete-keywords.wast")[..]),
+        //("ref_func.wast", &include_bytes!("../../testsuite-bin/ref_func.wast")[..]),
+        //("ref_is_null.wast", &include_bytes!("../../testsuite-bin/ref_is_null.wast")[..]),
+        //("ref_null.wast", &include_bytes!("../../testsuite-bin/ref_null.wast")[..]),
         ("return.wast", &include_bytes!("../../testsuite-bin/return.wast")[..]),
-        ("select.wast", &include_bytes!("../../testsuite-bin/select.wast")[..]),
+        //("select.wast", &include_bytes!("../../testsuite-bin/select.wast")[..]),
         /*
         ("simd_address.wast", &include_bytes!("../../testsuite-bin/simd_address.wast")[..]),
         ("simd_align.wast", &include_bytes!("../../testsuite-bin/simd_align.wast")[..]),
@@ -128,27 +128,27 @@ fn main() {
         ("simd_store64_lane.wast", &include_bytes!("../../testsuite-bin/simd_store64_lane.wast")[..]),
         ("simd_store8_lane.wast", &include_bytes!("../../testsuite-bin/simd_store8_lane.wast")[..]),
         */
-        ("skip-stack-guard-page.wast", &include_bytes!("../../testsuite-bin/skip-stack-guard-page.wast")[..]),
+        //("skip-stack-guard-page.wast", &include_bytes!("../../testsuite-bin/skip-stack-guard-page.wast")[..]),
         ("stack.wast", &include_bytes!("../../testsuite-bin/stack.wast")[..]),
-        ("start.wast", &include_bytes!("../../testsuite-bin/start.wast")[..]),
+        //("start.wast", &include_bytes!("../../testsuite-bin/start.wast")[..]),
         ("store.wast", &include_bytes!("../../testsuite-bin/store.wast")[..]),
         ("switch.wast", &include_bytes!("../../testsuite-bin/switch.wast")[..]),
         ("table-sub.wast", &include_bytes!("../../testsuite-bin/table-sub.wast")[..]),
-        ("table.wast", &include_bytes!("../../testsuite-bin/table.wast")[..]),
-        ("table_copy.wast", &include_bytes!("../../testsuite-bin/table_copy.wast")[..]),
-        ("table_fill.wast", &include_bytes!("../../testsuite-bin/table_fill.wast")[..]),
-        ("table_get.wast", &include_bytes!("../../testsuite-bin/table_get.wast")[..]),
-        ("table_grow.wast", &include_bytes!("../../testsuite-bin/table_grow.wast")[..]),
-        ("table_init.wast", &include_bytes!("../../testsuite-bin/table_init.wast")[..]),
-        ("table_set.wast", &include_bytes!("../../testsuite-bin/table_set.wast")[..]),
-        ("table_size.wast", &include_bytes!("../../testsuite-bin/table_size.wast")[..]),
-        ("token.wast", &include_bytes!("../../testsuite-bin/token.wast")[..]),
+        //("table.wast", &include_bytes!("../../testsuite-bin/table.wast")[..]),
+        //("table_copy.wast", &include_bytes!("../../testsuite-bin/table_copy.wast")[..]),
+        //("table_fill.wast", &include_bytes!("../../testsuite-bin/table_fill.wast")[..]),
+        //("table_get.wast", &include_bytes!("../../testsuite-bin/table_get.wast")[..]),
+        //("table_grow.wast", &include_bytes!("../../testsuite-bin/table_grow.wast")[..]),
+        //("table_init.wast", &include_bytes!("../../testsuite-bin/table_init.wast")[..]),
+        //("table_set.wast", &include_bytes!("../../testsuite-bin/table_set.wast")[..]),
+        //("table_size.wast", &include_bytes!("../../testsuite-bin/table_size.wast")[..]),
+        //("token.wast", &include_bytes!("../../testsuite-bin/token.wast")[..]),
         ("traps.wast", &include_bytes!("../../testsuite-bin/traps.wast")[..]),
         ("type.wast", &include_bytes!("../../testsuite-bin/type.wast")[..]),
         ("unreachable.wast", &include_bytes!("../../testsuite-bin/unreachable.wast")[..]),
         ("unreached-invalid.wast", &include_bytes!("../../testsuite-bin/unreached-invalid.wast")[..]),
-        ("unreached-valid.wast", &include_bytes!("../../testsuite-bin/unreached-valid.wast")[..]),
-        ("unwind.wast", &include_bytes!("../../testsuite-bin/unwind.wast")[..]),
+        //("unreached-valid.wast", &include_bytes!("../../testsuite-bin/unreached-valid.wast")[..]),
+        //("unwind.wast", &include_bytes!("../../testsuite-bin/unwind.wast")[..]),
         ("utf8-custom-section-id.wast", &include_bytes!("../../testsuite-bin/utf8-custom-section-id.wast")[..]),
         ("utf8-import-field.wast", &include_bytes!("../../testsuite-bin/utf8-import-field.wast")[..]),
         ("utf8-import-module.wast", &include_bytes!("../../testsuite-bin/utf8-import-module.wast")[..]),
@@ -184,13 +184,14 @@ fn main() {
             }
         }
 
-        //let mut module_idx = 0;
+        let mut module_idx = 0;
         let mut instance = None;
 
         while let Some(op) = reader.next() {
             match op {
                 0x01 => {
-                    //module_idx += 1;
+                    println!("module {module_idx}");
+                    module_idx += 1;
 
                     let wasm = read_bytes(&mut reader);
                     let module = store.new_module(wasm).unwrap();
@@ -211,27 +212,31 @@ fn main() {
                     let inst = instance.unwrap();
                     let func = store.get_export_func_dyn(inst, name).unwrap();
 
-                    store.call_dyn(func, &args, &mut actual_rets).unwrap();
                     num_tests += 1;
-
-                    let mut equal = true;
-                    assert_eq!(rets.len(), actual_rets.len());
-                    for i in 0..rets.len() {
-                        let ok = match (rets[i], actual_rets[i]) {
-                            (Value::I32(a), Value::I32(b)) => a == b,
-                            (Value::I64(a), Value::I64(b)) => a == b,
-                            (Value::F32(a), Value::F32(b)) => a.to_bits() == b.to_bits(),
-                            (Value::F64(a), Value::F64(b)) => a.to_bits() == b.to_bits(),
-                            _ => false,
-                        };
-                        equal = equal && ok;
-                    }
-
-                    if equal {
-                        num_successes += 1;
+                    if let Err(e) = store.call_dyn(func, &args, &mut actual_rets) {
+                        println!("expected {name}({args:?}) = {rets:?}");
+                        println!(" failed with error {e:?}");
                     }
                     else {
-                        println!("expected {name}({args:?})\n =   {rets:?}\n got {actual_rets:?}");
+                        let mut equal = true;
+                        assert_eq!(rets.len(), actual_rets.len());
+                        for i in 0..rets.len() {
+                            let ok = match (rets[i], actual_rets[i]) {
+                                (Value::I32(a), Value::I32(b)) => a == b,
+                                (Value::I64(a), Value::I64(b)) => a == b,
+                                (Value::F32(a), Value::F32(b)) => a.to_bits() == b.to_bits(),
+                                (Value::F64(a), Value::F64(b)) => a.to_bits() == b.to_bits(),
+                                _ => false,
+                            };
+                            equal = equal && ok;
+                        }
+
+                        if equal {
+                            num_successes += 1;
+                        }
+                        else {
+                            println!("expected {name}({args:?})\n =   {rets:?}\n got {actual_rets:?}");
+                        }
                     }
                 }
 

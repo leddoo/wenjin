@@ -221,25 +221,27 @@ impl Store {
                 wasm::opcode::LOOP => {}
 
                 wasm::opcode::IF => {
-                    todo!()
+                    let els = state.next_jump();
+                    let cond = state.pop().as_i32();
+                    if cond == 0 {
+                        state.jump(els);
+                    }
                 }
 
-                wasm::opcode::ELSE => {
-                    todo!()
-                }
+                wasm::opcode::ELSE => {}
 
                 wasm::opcode::END => {}
 
                 wasm::opcode::BR => {
-                    let delta = state.next_jump();
-                    state.jump(delta);
+                    let dst = state.next_jump();
+                    state.jump(dst);
                 }
 
                 wasm::opcode::BR_IF => {
-                    let delta = state.next_jump();
+                    let dst = state.next_jump();
                     let cond = state.pop().as_i32();
                     if cond != 0 {
-                        state.jump(delta);
+                        state.jump(dst);
                     }
                 }
 
@@ -391,7 +393,7 @@ impl Store {
                 }
 
                 wasm::opcode::CALL_INDIRECT => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::DROP => {
@@ -425,19 +427,19 @@ impl Store {
                 }
 
                 wasm::opcode::GLOBAL_GET => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::GLOBAL_SET => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::TABLE_GET => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::TABLE_SET => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I32_LOAD => {
@@ -556,11 +558,11 @@ impl Store {
                 }
 
                 wasm::opcode::MEMORY_SIZE => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::MEMORY_GROW => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I32_CONST => {
@@ -639,107 +641,122 @@ impl Store {
                 }
 
                 wasm::opcode::I64_EQZ => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I64_EQ => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I64_NE => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I64_LT_S => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I64_LT_U => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I64_GT_S => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I64_GT_U => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I64_LE_S => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I64_LE_U => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I64_GE_S => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I64_GE_U => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::F32_EQ => {
-                    todo!()
+                    let (b, a) = (state.pop().as_f32(), state.pop().as_f32());
+                    state.push(StackValue::from_i32((a == b) as i32));
                 }
 
                 wasm::opcode::F32_NE => {
-                    todo!()
+                    let (b, a) = (state.pop().as_f32(), state.pop().as_f32());
+                    state.push(StackValue::from_i32((a != b) as i32));
                 }
 
                 wasm::opcode::F32_LT => {
-                    todo!()
+                    let (b, a) = (state.pop().as_f32(), state.pop().as_f32());
+                    state.push(StackValue::from_i32((a < b) as i32));
                 }
 
                 wasm::opcode::F32_GT => {
-                    todo!()
+                    let (b, a) = (state.pop().as_f32(), state.pop().as_f32());
+                    state.push(StackValue::from_i32((a > b) as i32));
                 }
 
                 wasm::opcode::F32_LE => {
-                    todo!()
+                    let (b, a) = (state.pop().as_f32(), state.pop().as_f32());
+                    state.push(StackValue::from_i32((a <= b) as i32));
                 }
 
                 wasm::opcode::F32_GE => {
-                    todo!()
+                    let (b, a) = (state.pop().as_f32(), state.pop().as_f32());
+                    state.push(StackValue::from_i32((a >= b) as i32));
                 }
 
                 wasm::opcode::F64_EQ => {
-                    todo!()
+                    let (b, a) = (state.pop().as_f64(), state.pop().as_f64());
+                    state.push(StackValue::from_i32((a == b) as i32));
                 }
 
                 wasm::opcode::F64_NE => {
-                    todo!()
+                    let (b, a) = (state.pop().as_f64(), state.pop().as_f64());
+                    state.push(StackValue::from_i32((a != b) as i32));
                 }
 
                 wasm::opcode::F64_LT => {
-                    todo!()
+                    let (b, a) = (state.pop().as_f64(), state.pop().as_f64());
+                    state.push(StackValue::from_i32((a < b) as i32));
                 }
 
                 wasm::opcode::F64_GT => {
-                    todo!()
+                    let (b, a) = (state.pop().as_f64(), state.pop().as_f64());
+                    state.push(StackValue::from_i32((a > b) as i32));
                 }
 
                 wasm::opcode::F64_LE => {
-                    todo!()
+                    let (b, a) = (state.pop().as_f64(), state.pop().as_f64());
+                    state.push(StackValue::from_i32((a <= b) as i32));
                 }
 
                 wasm::opcode::F64_GE => {
-                    todo!()
+                    let (b, a) = (state.pop().as_f64(), state.pop().as_f64());
+                    state.push(StackValue::from_i32((a >= b) as i32));
                 }
 
                 wasm::opcode::I32_CLZ => {
-                    todo!()
+                    let v = state.pop().as_i32();
+                    state.push(StackValue::from_i32(v.leading_zeros() as i32));
                 }
 
                 wasm::opcode::I32_CTZ => {
-                    todo!()
+                    let v = state.pop().as_i32();
+                    state.push(StackValue::from_i32(v.trailing_zeros() as i32));
                 }
 
                 wasm::opcode::I32_POPCNT => {
-                    todo!()
+                    let v = state.pop().as_i32();
+                    state.push(StackValue::from_i32(v.count_ones() as i32));
                 }
 
                 wasm::opcode::I32_ADD => {
@@ -805,123 +822,138 @@ impl Store {
                 }
 
                 wasm::opcode::I32_SHL => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I32_SHR_S => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I32_SHR_U => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I32_ROTL => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I32_ROTR => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I64_CLZ => {
-                    todo!()
+                    let v = state.pop().as_i64();
+                    state.push(StackValue::from_i64(v.leading_zeros() as i64));
                 }
 
                 wasm::opcode::I64_CTZ => {
-                    todo!()
+                    let v = state.pop().as_i64();
+                    state.push(StackValue::from_i64(v.trailing_zeros() as i64));
                 }
 
                 wasm::opcode::I64_POPCNT => {
-                    todo!()
+                    let v = state.pop().as_i64();
+                    state.push(StackValue::from_i64(v.count_ones() as i64));
                 }
 
                 wasm::opcode::I64_ADD => {
-                    todo!()
+                    let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
+                    state.push(StackValue::from_i64(a.wrapping_add(b)));
                 }
 
                 wasm::opcode::I64_SUB => {
-                    todo!()
+                    let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
+                    state.push(StackValue::from_i64(a.wrapping_sub(b)));
                 }
 
                 wasm::opcode::I64_MUL => {
-                    todo!()
+                    let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
+                    state.push(StackValue::from_i64(a.wrapping_mul(b)));
                 }
 
                 wasm::opcode::I64_DIV_S => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I64_DIV_U => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I64_REM_S => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I64_REM_U => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I64_AND => {
-                    todo!()
+                    let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
+                    state.push(StackValue::from_i64(a & b));
                 }
 
                 wasm::opcode::I64_OR => {
-                    todo!()
+                    let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
+                    state.push(StackValue::from_i64(a | b));
                 }
 
                 wasm::opcode::I64_XOR => {
-                    todo!()
+                    let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
+                    state.push(StackValue::from_i64(a ^ b));
                 }
 
                 wasm::opcode::I64_SHL => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I64_SHR_S => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I64_SHR_U => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I64_ROTL => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I64_ROTR => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::F32_ABS => {
-                    todo!()
+                    let v = state.pop().as_f32();
+                    state.push(StackValue::from_f32(v.abs()));
                 }
 
                 wasm::opcode::F32_NEG => {
-                    todo!()
+                    let v = state.pop().as_f32();
+                    state.push(StackValue::from_f32(-v));
                 }
 
                 wasm::opcode::F32_CEIL => {
-                    todo!()
+                    let v = state.pop().as_f32();
+                    state.push(StackValue::from_f32(v.ceil()));
                 }
 
                 wasm::opcode::F32_FLOOR => {
-                    todo!()
+                    let v = state.pop().as_f32();
+                    state.push(StackValue::from_f32(v.floor()));
                 }
 
                 wasm::opcode::F32_TRUNC => {
-                    todo!()
+                    let v = state.pop().as_f32();
+                    state.push(StackValue::from_f32(v.trunc()));
                 }
 
                 wasm::opcode::F32_NEAREST => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::F32_SQRT => {
-                    todo!()
+                    let v = state.pop().as_f32();
+                    state.push(StackValue::from_f32(v.sqrt()));
                 }
 
                 wasm::opcode::F32_ADD => {
@@ -945,214 +977,224 @@ impl Store {
                 }
 
                 wasm::opcode::F32_MIN => {
-                    todo!()
+                    let (b, a) = (state.pop().as_f32(), state.pop().as_f32());
+                    state.push(StackValue::from_f32(a.min(b)));
                 }
 
                 wasm::opcode::F32_MAX => {
-                    todo!()
+                    let (b, a) = (state.pop().as_f32(), state.pop().as_f32());
+                    state.push(StackValue::from_f32(a.max(b)));
                 }
 
                 wasm::opcode::F32_COPYSIGN => {
-                    todo!()
+                    let (b, a) = (state.pop().as_f32(), state.pop().as_f32());
+                    state.push(StackValue::from_f32(a.copysign(b)));
                 }
 
                 wasm::opcode::F64_ABS => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::F64_NEG => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::F64_CEIL => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::F64_FLOOR => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::F64_TRUNC => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::F64_NEAREST => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::F64_SQRT => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::F64_ADD => {
-                    todo!()
+                    let (b, a) = (state.pop().as_f64(), state.pop().as_f64());
+                    state.push(StackValue::from_f64(a + b));
                 }
 
                 wasm::opcode::F64_SUB => {
-                    todo!()
+                    let (b, a) = (state.pop().as_f64(), state.pop().as_f64());
+                    state.push(StackValue::from_f64(a - b));
                 }
 
                 wasm::opcode::F64_MUL => {
-                    todo!()
+                    let (b, a) = (state.pop().as_f64(), state.pop().as_f64());
+                    state.push(StackValue::from_f64(a * b));
                 }
 
                 wasm::opcode::F64_DIV => {
-                    todo!()
+                    let (b, a) = (state.pop().as_f64(), state.pop().as_f64());
+                    state.push(StackValue::from_f64(a / b));
                 }
 
                 wasm::opcode::F64_MIN => {
-                    todo!()
+                    let (b, a) = (state.pop().as_f64(), state.pop().as_f64());
+                    state.push(StackValue::from_f64(a.min(b)));
                 }
 
                 wasm::opcode::F64_MAX => {
-                    todo!()
+                    let (b, a) = (state.pop().as_f64(), state.pop().as_f64());
+                    state.push(StackValue::from_f64(a.max(b)));
                 }
 
                 wasm::opcode::F64_COPYSIGN => {
-                    todo!()
+                    let (b, a) = (state.pop().as_f64(), state.pop().as_f64());
+                    state.push(StackValue::from_f64(a.copysign(b)));
                 }
 
                 wasm::opcode::I32_WRAP_I64 => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I32_TRUNC_F32_S => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I32_TRUNC_F32_U => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I32_TRUNC_F64_S => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I32_TRUNC_F64_U => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I64_EXTEND_I32_S => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I64_EXTEND_I32_U => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I64_TRUNC_F32_S => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I64_TRUNC_F32_U => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I64_TRUNC_F64_S => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I64_TRUNC_F64_U => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::F32_CONVERT_I32_S => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::F32_CONVERT_I32_U => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::F32_CONVERT_I64_S => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::F32_CONVERT_I64_U => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::F32_DEMOTE_F64 => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::F64_CONVERT_I32_S => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::F64_CONVERT_I32_U => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::F64_CONVERT_I64_S => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::F64_CONVERT_I64_U => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::F64_PROMOTE_F32 => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I32_REINTERPRET_F32 => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I64_REINTERPRET_F64 => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::F32_REINTERPRET_I32 => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::F64_REINTERPRET_I64 => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I32_EXTEND8_S => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I32_EXTEND16_S => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I64_EXTEND8_S => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I64_EXTEND16_S => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::I64_EXTEND32_S => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::REF_NULL => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::REF_IS_NULL => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 wasm::opcode::REF_FUNC => {
-                    todo!()
+                    return Err(Error::Unimplemented);
                 }
 
                 0xfc => {
                     let op = state.next_u32();
                     match op {
                         wasm::opcode::xfc::MEMORY_COPY => {
-                            todo!()
+                            return Err(Error::Unimplemented);
                         }
 
                         wasm::opcode::xfc::MEMORY_FILL => {
-                            todo!()
+                            return Err(Error::Unimplemented);
                         }
 
                         _ => unreachable!()

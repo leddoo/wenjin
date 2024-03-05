@@ -1,11 +1,12 @@
-fn convert(wast: &str) -> Vec<u8> {
+fn convert(wast: &str) -> (Vec<u8>, Vec<Vec<u8>>) {
     let pb = &wast::parser::ParseBuffer::new(wast).unwrap();
     let Ok(mut wast) = wast::parser::parse::<wast::Wast>(pb) else {
-        return vec![];
+        return (vec![], vec![]);
     };
 
 
     let mut output = vec![];
+    let mut modules = vec![];
 
     fn push_usize(output: &mut Vec<u8>, v: usize) {
         output.extend_from_slice(&u32::try_from(v).unwrap().to_le_bytes());
@@ -24,6 +25,7 @@ fn convert(wast: &str) -> Vec<u8> {
                 let wasm = wat.encode().unwrap();
                 output.push(0x01);
                 push_bytes(&mut output, &wasm);
+                modules.push(wasm);
             }
 
             WD::AssertMalformed { span: _, module: _, message: _ } => {
@@ -167,7 +169,7 @@ fn convert(wast: &str) -> Vec<u8> {
         }
     }
 
-    return output;
+    return (output, modules);
 }
 
 fn main() {
@@ -177,8 +179,11 @@ fn main() {
         let Some(extension) = path.extension() else { continue };
         if extension.to_str().unwrap() != "wast" { continue }
         let wast = std::fs::read_to_string(&path).unwrap();
-        let bin = convert(&wast);
+        let (bin, modules) = convert(&wast);
         std::fs::write(&format!("./testsuite-bin/{}", path.file_name().unwrap().to_str().unwrap()), bin).unwrap();
+        for (i, module) in modules.iter().enumerate() {
+            std::fs::write(&format!("./testsuite-bin/{}-module-{i}.wasm", path.file_name().unwrap().to_str().unwrap()), module).unwrap();
+        }
     }
 }
 
