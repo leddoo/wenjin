@@ -3,6 +3,24 @@
 version = 3
 
 [[package]]
+name = "bumpalo"
+version = "3.15.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8ea184aa71bb362a1157c896979544cc23974e08fd265f29ea96b59f0b4a555b"
+
+[[package]]
+name = "leb128"
+version = "0.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "884e2677b40cc8c339eaefcb701c32ef1fd2493d71118dc0ca4b6a736c93bd67"
+
+[[package]]
+name = "memchr"
+version = "2.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "523dc4f511e55ab87b694dc30d0f820d60906ef06413f93d4d7a1385599cc149"
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.78"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -41,6 +59,48 @@ name = "unicode-ident"
 version = "1.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3354b9ac3fae1ff6755cb6db53683adb661634f67557942dea4facebec0fee4b"
+
+[[package]]
+name = "unicode-width"
+version = "0.1.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e51733f11c9c4f72aa0c160008246859e340b00807569a0da0e7a1079b27ba85"
+
+[[package]]
+name = "wasm-encoder"
+version = "0.201.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9c7d2731df60006819b013f64ccc2019691deccf6e11a1804bc850cd6748f1a"
+dependencies = [
+ "leb128",
+]
+
+[[package]]
+name = "wasm-testsuite-encoder"
+version = "0.1.0"
+dependencies = [
+ "wast",
+]
+
+[[package]]
+name = "wasm-testsuite-runner"
+version = "0.1.0"
+dependencies = [
+ "wenjin",
+]
+
+[[package]]
+name = "wast"
+version = "201.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1ef6e1ef34d7da3e2b374fd2b1a9c0227aff6cad596e1b24df9b58d0f6222faa"
+dependencies = [
+ "bumpalo",
+ "leb128",
+ "memchr",
+ "unicode-width",
+ "wasm-encoder",
+]
 
 [[package]]
 name = "wenjin"

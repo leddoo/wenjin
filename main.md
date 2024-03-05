@@ -1,7 +1,7 @@
 
 - todo:
     - rewrite:
-        - wasm test suite.
+        - wasm test suite runner.
         - host funcs.
         - wasm types & typed func.
         - rest of the owl:

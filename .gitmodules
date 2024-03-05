@@ -1,0 +1,3 @@
+[submodule "wasm-testsuite/testsuite"]
+	path = wasm-testsuite/testsuite
+	url = git@github.com:WebAssembly/testsuite.git

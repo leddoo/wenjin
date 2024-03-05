@@ -1,0 +1,8 @@
+[package]
+name = "wasm-testsuite-encoder"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wast = "201.0.0"
+

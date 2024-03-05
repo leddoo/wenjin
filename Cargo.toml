@@ -3,6 +3,8 @@ members = [
     "wenjin-wasm",
     "wenjin-derive",
     "wenjin",
+    "wasm-testsuite/encoder",
+    "wasm-testsuite/runner",
     #"wasi-types",
     #"examples/basic",
 ]
