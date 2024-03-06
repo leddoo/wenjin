@@ -203,7 +203,7 @@ impl Store {
             .map_err(|_| todo!())?;
 
         let mut validator = wasm::Validator::new(&module);
-        let mut compiler = interp::Compiler::new().ok_or_else(|| Error::OutOfMemory)?;
+        let mut compiler = interp::Compiler::new(&module);
 
         let mut funcs = ManualVec::with_cap(module.codes.len()).ok_or_else(|| Error::OutOfMemory)?;
 
@@ -214,14 +214,24 @@ impl Store {
             let ty = module.types[module.funcs[i] as usize];
 
             validator.begin_func(ty_idx, code.locals).unwrap();
-            compiler.begin_func(ty.rets.len() as u32);
+            compiler.begin_func(ty_idx);
 
             while !p.is_done() {
                 let ((), ()) =
                     p.parse_operator_with(wasm::AndThenOp(&mut validator, &mut compiler))
                     .map_err(|_| todo!())?
                     .map_err(|_| todo!())?;
+
+                debug_assert_eq!(validator.num_stack(), compiler.num_stack());
+                debug_assert_eq!(validator.num_frames(), compiler.num_frames());
+                if validator.num_frames() != 0 {
+                    debug_assert_eq!(validator.is_unreachable(), compiler.is_unreachable());
+                }
             }
+            assert!(validator.num_stack() == 0
+                && validator.num_frames() == 0
+                && compiler.num_stack() == 0
+                && compiler.num_frames() == 0);
 
             if 1==1 { println!("{i}"); interp::dump(compiler.peek_code()); }
 

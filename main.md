@@ -2,14 +2,7 @@
 - todo:
     - pass all (`invoke`/`assert_return`) tests.
         - fix block return types.
-            - adjust frame height using params.
-            - store num block rets.
-            - actually, we need the info on the instrs,
-              cause `br_if` only needs the shift on break.
-              so let's have special versions of those as two-byte opcodes.
-              return is probably common, so maybe don't have a special version of that.
-              but tbh, let's just not have specials for now.
-              again, it's the interp, who cares.
+            - shift params for branches.
         - `br_table`.
         - globals.
         - data.
@@ -25,5 +18,9 @@
         - validate non-code sections (incl elem, data).
         - pass remaining tests.
     - debugging.
+
+
+- robustness:
+    - is there a `loop.params-shifter`-like validation test with an invalid push (type) in the loop?
 
 

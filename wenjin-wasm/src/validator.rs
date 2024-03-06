@@ -71,6 +71,11 @@ impl<'a> Validator<'a> {
     }
 
     #[inline(always)]
+    pub fn num_stack(&self) -> u32 {
+        self.stack.len() as u32
+    }
+
+    #[inline(always)]
     pub fn num_frames(&self) -> u32 {
         self.frames.len() as u32
     }
@@ -101,7 +106,7 @@ impl<'a> Validator<'a> {
         return Ok(());
     }
 
-    fn is_unreachable(&self) -> bool {
+    pub fn is_unreachable(&self) -> bool {
         self.frames.rev(0).unreachable
     }
 
@@ -348,19 +353,11 @@ impl<'a> OperatorVisitor for Validator<'a> {
     }
 
     fn visit_end(&mut self) -> Self::Output {
-        if self.frames.len() > 1 {
-            let frame = self.pop_frame()?;
-            self.push_n(self.block_end_types(frame.ty))
+        let frame = self.pop_frame()?;
+        if self.frames.len() > 0 {
+            self.push_n(self.block_end_types(frame.ty))?;
         }
-        else {
-            // implicit return.
-            self.expect_n(self.block_end_types(self.frames[0].ty))?;
-            if self.stack.len() != 0 {
-                todo!()
-            }
-            self.unreachable();
-            return Ok(());
-        }
+        return Ok(());
     }
 
     fn visit_br(&mut self, label: u32) -> Self::Output {
