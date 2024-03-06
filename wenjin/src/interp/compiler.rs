@@ -202,6 +202,28 @@ impl<'a> Compiler<'a> {
         }
     }
 
+    fn br_shift(&mut self, label: Label) {
+        let frame = self.frames.rev_mut(label as usize);
+        let num = match frame.kind {
+            FrameKind::Block {..} |
+            FrameKind::If {..} |
+            FrameKind::Else {..} => frame.num_rets,
+            FrameKind::Loop {..} => frame.num_params,
+        };
+        let by =
+            if self.unreachable == 0 {
+                (self.stack - num) - frame.height
+            }
+            else { 0 };
+        self.add_bytes(&num.to_ne_bytes());
+        self.add_bytes(&by.to_ne_bytes());
+    }
+
+    fn jump_and_shift(&mut self, label: Label) {
+        self.jump(label);
+        self.br_shift(label);
+    }
+
     fn patch_jumps(&mut self, last_use: LabelUse, dst: Label) {
         let mut at = last_use;
         while at != u32::MAX {
@@ -262,7 +284,7 @@ impl<'a> wasm::OperatorVisitor for Compiler<'a> {
     fn visit_else(&mut self) -> Self::Output {
         // jump to end (for then branch).
         self.add_byte(opcode::BR);
-        self.jump(0);
+        self.jump_and_shift(0);
 
         let frame = self.pop_frame_core();
 
@@ -307,21 +329,22 @@ impl<'a> wasm::OperatorVisitor for Compiler<'a> {
 
     fn visit_br(&mut self, label: u32) -> Self::Output {
         self.add_byte(opcode::BR);
-        self.jump(label);
+        self.jump_and_shift(label);
         self.unreachable();
     }
 
     fn visit_br_if(&mut self, label: u32) -> Self::Output {
         self.pop(1);
         self.add_byte(opcode::BR_IF);
-        self.jump(label);
+        self.jump_and_shift(label);
     }
 
     fn visit_br_table(&mut self, default: u32) -> Self::Output {
+        self.pop(1);
         // @temp.
         self.add_byte(opcode::DROP);
         self.add_byte(opcode::BR);
-        self.jump(default);
+        self.jump_and_shift(default);
         self.unreachable();
     }
 

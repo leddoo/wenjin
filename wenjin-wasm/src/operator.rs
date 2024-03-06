@@ -5,7 +5,7 @@ macro_rules! for_each_operator {
             Unreachable => visit_unreachable
             Nop => visit_nop
             Block { ty: $crate::BlockType } => visit_block
-            Loop { yt: $crate::BlockType } => visit_loop
+            Loop { ty: $crate::BlockType } => visit_loop
             If { ty: $crate::BlockType } => visit_if
             Else => visit_else
             End => visit_end

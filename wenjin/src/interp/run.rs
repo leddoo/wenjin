@@ -95,6 +95,11 @@ impl State {
     }
 
     #[inline]
+    fn next_shift(&mut self) -> (u32, u32) {
+        (self.next_u32(), self.next_u32())
+    }
+
+    #[inline]
     fn jump(&mut self, (from, delta): (*mut u8, i32)) {
         unsafe {
             let delta = delta as isize;
@@ -105,6 +110,22 @@ impl State {
 
             self.pc = from.offset(delta);
         }
+    }
+
+    #[inline]
+    fn jump_and_shift(&mut self, jump: (*mut u8, i32), (shift_num, shift_by): (u32, u32)) {
+        self.jump(jump);
+        if shift_by != 0 { unsafe {
+            let src = self.sp.sub(shift_num as usize);
+            let dst = src.sub(shift_by as usize);
+            if shift_num == 1 {
+                *dst = *src;
+            }
+            else {
+                core::ptr::copy(src, dst, shift_num as usize);
+            }
+            self.sp = self.sp.sub(shift_by as usize);
+        }}
     }
 
     #[inline]
@@ -234,14 +255,16 @@ impl Store {
 
                 wasm::opcode::BR => {
                     let dst = state.next_jump();
-                    state.jump(dst);
+                    let shift = state.next_shift();
+                    state.jump_and_shift(dst, shift);
                 }
 
                 wasm::opcode::BR_IF => {
                     let dst = state.next_jump();
+                    let shift = state.next_shift();
                     let cond = state.pop().as_i32();
                     if cond != 0 {
-                        state.jump(dst);
+                        state.jump_and_shift(dst, shift);
                     }
                 }
 

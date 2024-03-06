@@ -233,7 +233,7 @@ impl Store {
                 && compiler.num_stack() == 0
                 && compiler.num_frames() == 0);
 
-            if 1==1 { println!("{i}"); interp::dump(compiler.peek_code()); }
+            if 0==1 { println!("{i}"); interp::dump(compiler.peek_code()); }
 
 
             let ty = unsafe { core::mem::transmute::<wasm::FuncType, wasm::FuncType>(ty) };
