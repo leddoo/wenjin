@@ -200,5 +200,18 @@ fn main() {
             std::fs::write(&format!("./testsuite-bin/{}-module-{i}.wasm", path.file_name().unwrap().to_str().unwrap()), module).unwrap();
         }
     }
+
+    for path in std::fs::read_dir("./extra").unwrap() {
+        let path = path.unwrap().path();
+        if path.is_dir() { continue }
+        let Some(extension) = path.extension() else { continue };
+        if extension.to_str().unwrap() != "wast" { continue }
+        let wast = std::fs::read_to_string(&path).unwrap();
+        let (bin, modules) = convert(&wast);
+        std::fs::write(&format!("./testsuite-bin/extra-{}", path.file_name().unwrap().to_str().unwrap()), bin).unwrap();
+        for (i, module) in modules.iter().enumerate() {
+            std::fs::write(&format!("./testsuite-bin/extra-{}-module-{i}.wasm", path.file_name().unwrap().to_str().unwrap()), module).unwrap();
+        }
+    }
 }
 

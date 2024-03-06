@@ -3,6 +3,10 @@ use wenjin::{Store, Value};
 
 
 fn main() {
+    let t0 = std::time::Instant::now();
+    let mut input_size = 0;
+    let mut module_size = 0;
+
     let tests = [
         ("address.wast", &include_bytes!("../../testsuite-bin/address.wast")[..]),
         ("align.wast", &include_bytes!("../../testsuite-bin/align.wast")[..]),
@@ -23,6 +27,7 @@ fn main() {
         //("elem.wast", &include_bytes!("../../testsuite-bin/elem.wast")[..]),
         ("endianness.wast", &include_bytes!("../../testsuite-bin/endianness.wast")[..]),
         ("exports.wast", &include_bytes!("../../testsuite-bin/exports.wast")[..]),
+        ("extra-loop.wast", &include_bytes!("../../testsuite-bin/extra-loop.wast")[..]),
         ("f32.wast", &include_bytes!("../../testsuite-bin/f32.wast")[..]),
         ("f32_bitwise.wast", &include_bytes!("../../testsuite-bin/f32_bitwise.wast")[..]),
         ("f32_cmp.wast", &include_bytes!("../../testsuite-bin/f32_cmp.wast")[..]),
@@ -160,6 +165,7 @@ fn main() {
 
     for (name, bytes) in tests {
         println!("#running {name:?}");
+        input_size += bytes.len();
 
         let mut store = Store::new();
 
@@ -194,6 +200,8 @@ fn main() {
                     module_idx += 1;
 
                     let wasm = read_bytes(&mut reader);
+                    module_size += wasm.len();
+
                     let module = store.new_module(wasm).unwrap();
                     let inst = store.new_instance(module, &[]).unwrap();
                     instance = Some(inst);
@@ -264,6 +272,8 @@ fn main() {
         }
     }
 
-    println!("ran {num_tests} tests, {num_successes} succeeded, {} failed", num_tests - num_successes);
+    let dt = t0.elapsed();
+    println!("ran {num_tests} tests, {num_successes} succeeded, {} failed.", num_tests - num_successes);
+    println!("in {dt:?}, total input size: {input_size}. total size of modules: {module_size}");
 }
 
