@@ -3,7 +3,7 @@ use sti::reader::Reader;
 use sti::arena::Arena;
 use sti::manual_vec::ManualVec;
 
-use crate::leb128;
+use crate::{leb128, BrTable};
 use crate::{ValueType, RefType, FuncType, BlockType, Limits, TableType, MemoryType, GlobalType};
 use crate::{Import, ImportKind, Imports, Global, Export, ExportKind, Element, ElementKind, Code, Data, DataKind};
 use crate::{SubSection, Section, SectionKind, CustomSection};
@@ -351,7 +351,7 @@ impl<'a> Parser<'a> {
         self.parse_operator_with(MkOperator)
     }
 
-    pub fn parse_operator_with<V: OperatorVisitor>(&mut self, mut v: V) -> Result<V::Output> {
+    pub fn parse_operator_with<V: OperatorVisitor<'a>>(&mut self, mut v: V) -> Result<V::Output> {
         use crate::opcode;
 
         let at = self.next()?;
@@ -367,12 +367,17 @@ impl<'a> Parser<'a> {
             opcode::BR_IF           => v.visit_br_if(self.parse_u32()?),
             opcode::BR_TABLE => {
                 let num_labels = self.parse_u32()?;
+
+                let begin_labels = self.reader.offset();
                 for _ in 0..num_labels {
                     self.parse_u32()?;
                 }
+                let end_labels = self.reader.offset();
+                let labels = &self.reader.original_slice()[begin_labels..end_labels];
+
                 let default = self.parse_u32()?;
 
-                v.visit_br_table(default)
+                v.visit_br_table(BrTable { num_labels, labels, default })
             }
             opcode::RETURN          => v.visit_return(),
             opcode::CALL            => v.visit_call(self.parse_u32()?),

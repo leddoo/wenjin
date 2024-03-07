@@ -11,7 +11,7 @@ macro_rules! for_each_operator {
             End => visit_end
             Br { label: u32 } => visit_br
             BrIf { label: u32 }=> visit_br_if
-            BrTable { table: u32 } => visit_br_table
+            BrTable { table: $crate::BrTable<'a> } => visit_br_table
             Return => visit_return
             Call { func: $crate::FuncIdx } => visit_call
             CallIndirect { ty: $crate::TypeIdx, table: $crate::TableIdx } => visit_call_indirect
@@ -195,7 +195,7 @@ macro_rules! for_each_operator {
 macro_rules! operator_enum {
     ($($op:ident $({ $($arg:ident: $argty:ty),* })? => $visitor:ident)*) => {
         #[derive(Clone, Copy, Debug)]
-        pub enum Operator {
+        pub enum Operator<'a> {
             $($op $({ $($arg: $argty),* })?,)*
         }
     };
@@ -205,8 +205,8 @@ for_each_operator!(operator_enum);
 
 macro_rules! operator_visitor {
     ($($op:ident $({ $($arg:ident: $argty:ty),* })? => $visitor:ident)*) => {
-        pub trait OperatorVisitor {
-            type Output;
+        pub trait OperatorVisitor<'a> {
+            type Output: 'a;
 
             $(fn $visitor(&mut self, $($($arg: $argty),*)?) -> Self::Output;)*
         }
@@ -217,7 +217,7 @@ for_each_operator!(operator_visitor);
 
 macro_rules! refmut_operator_visitor {
     ($($op:ident $({ $($arg:ident: $argty:ty),* })? => $visitor:ident)*) => {
-        impl<V: OperatorVisitor> OperatorVisitor for &mut V {
+        impl<'a, V: OperatorVisitor<'a>> OperatorVisitor<'a> for &mut V {
             type Output = V::Output;
 
             $(#[inline] fn $visitor(&mut self, $($($arg: $argty),*)?) -> Self::Output {
@@ -231,7 +231,7 @@ for_each_operator!(refmut_operator_visitor);
 
 macro_rules! chain_operator_visitor {
     ($($op:ident $({ $($arg:ident: $argty:ty),* })? => $visitor:ident)*) => {
-        impl<V1: OperatorVisitor, V2: OperatorVisitor> OperatorVisitor for (V1, V2) {
+        impl<'a, V1: OperatorVisitor<'a>, V2: OperatorVisitor<'a>> OperatorVisitor<'a> for (V1, V2) {
             type Output = (V1::Output, V2::Output);
 
             $(#[inline] fn $visitor(&mut self, $($($arg: $argty),*)?) -> Self::Output {
@@ -247,7 +247,7 @@ macro_rules! andthen_operator_visitor {
     ($($op:ident $({ $($arg:ident: $argty:ty),* })? => $visitor:ident)*) => {
         pub struct AndThenOp<V1, V2>(pub V1, pub V2);
 
-        impl<R1, E1, V1: OperatorVisitor<Output=Result<R1, E1>>, V2: OperatorVisitor> OperatorVisitor for AndThenOp<V1, V2> {
+        impl<'a, R1: 'a, E1: 'a, V1: OperatorVisitor<'a, Output=Result<R1, E1>>, V2: OperatorVisitor<'a>> OperatorVisitor<'a> for AndThenOp<V1, V2> {
             type Output = Result<(R1, V2::Output), E1>;
 
             $(#[inline] fn $visitor(&mut self, $($($arg: $argty),*)?) -> Self::Output {
@@ -264,8 +264,8 @@ pub struct MkOperator;
 
 macro_rules! mk_operator {
     ($($op:ident $({ $($arg:ident: $argty:ty),* })? => $visitor:ident)*) => {
-        impl OperatorVisitor for MkOperator {
-            type Output = Operator;
+        impl<'a> OperatorVisitor<'a> for MkOperator {
+            type Output = Operator<'a>;
 
             $(fn $visitor(&mut self, $($($arg: $argty),*)?) -> Self::Output {
                 Operator::$op $({ $($arg),* })?

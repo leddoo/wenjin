@@ -52,7 +52,7 @@ pub fn dump(code: &[u8]) {
         fn jump(reader: &mut Reader<u8>) {
             let offset = reader.offset();
             let delta = i32::from_ne_bytes(reader.next_array::<4>().unwrap());
-            print!(" {:#06x}: ", offset as i32 + delta);
+            print!(" {:#06x}", offset as i32 + delta);
         }
 
         match op {
@@ -65,7 +65,13 @@ pub fn dump(code: &[u8]) {
             wasm::opcode::END => {}
             wasm::opcode::BR => { jump(&mut reader); imm_i32(&mut reader); imm_i32(&mut reader) }
             wasm::opcode::BR_IF => { jump(&mut reader); imm_i32(&mut reader); imm_i32(&mut reader) }
-            wasm::opcode::BR_TABLE => { todo!() }
+            wasm::opcode::BR_TABLE => {
+                let n = u32::from_ne_bytes(reader.next_array::<4>().unwrap());
+                print!(" [");
+                for _ in 0..n { jump(&mut reader); imm_i32(&mut reader); imm_i32(&mut reader); }
+                print!(" ]");
+                jump(&mut reader); imm_i32(&mut reader); imm_i32(&mut reader);
+            }
             wasm::opcode::RETURN => { imm_i32(&mut reader); }
             wasm::opcode::CALL => { imm_i32(&mut reader); }
             wasm::opcode::CALL_INDIRECT => { imm_i32(&mut reader); imm_i32(&mut reader) }

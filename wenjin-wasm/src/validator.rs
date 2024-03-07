@@ -1,7 +1,7 @@
 use sti::traits::{CopyIt, UnwrapDebug};
 use sti::manual_vec::ManualVec;
 
-use crate::{ValueType, BlockType, TypeIdx, FuncIdx, TableIdx, MemoryIdx, GlobalIdx, Module, TableType, FuncType, RefType, GlobalType, MemoryType};
+use crate::{ValueType, BlockType, TypeIdx, FuncIdx, TableIdx, MemoryIdx, GlobalIdx, Module, TableType, FuncType, RefType, GlobalType, MemoryType, BrTable};
 use crate::operator::OperatorVisitor;
 
 
@@ -316,7 +316,7 @@ impl<'a> Validator<'a> {
     }
 }
 
-impl<'a> OperatorVisitor for Validator<'a> {
+impl<'a> OperatorVisitor<'a> for Validator<'a> {
     type Output = Result<(), ValidatorError>;
 
     fn visit_unreachable(&mut self) -> Self::Output {
@@ -370,16 +370,22 @@ impl<'a> OperatorVisitor for Validator<'a> {
     fn visit_br_if(&mut self, label: u32) -> Self::Output {
         let frame = self.label(label)?;
         self.expect(ValueType::I32)?;
-        self.expect_n(self.frame_br_types(&frame))?;
-        self.push_n(self.frame_br_types(&frame))
+        let tys = self.frame_br_types(&frame);
+        self.expect_n(tys)?;
+        self.push_n(tys)
     }
 
-    fn visit_br_table(&mut self, default: u32) -> Self::Output {
-        // @temp.
-        let frame = self.label(default)?;
+    fn visit_br_table(&mut self, table: BrTable) -> Self::Output {
+        let frame = self.label(table.default)?;
+        let tys = self.frame_br_types(&frame);
+        for label in table.labels() {
+            let f = self.label(label)?;
+            if self.frame_br_types(&f) != tys {
+                todo!();
+            }
+        }
         self.expect(ValueType::I32)?;
-        self.expect_n(self.frame_br_types(&frame))?;
-        self.push_n(self.frame_br_types(&frame))?;
+        self.expect_n(tys)?;
         self.unreachable();
         return Ok(());
     }

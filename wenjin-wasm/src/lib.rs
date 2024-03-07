@@ -236,6 +236,19 @@ pub struct Code<'a> {
     pub expr: SubSection,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct BrTable<'a> {
+    pub num_labels: u32,
+    pub labels: &'a [u8],
+    pub default: u32,
+}
+
+impl<'a> BrTable<'a> {
+    pub fn labels(&self) -> U32Iter<'a> {
+        U32Iter { values: sti::reader::Reader::new(self.labels) }
+    }
+}
+
 
 #[derive(Clone, Copy, Debug)]
 pub struct Data<'a> {
@@ -379,6 +392,24 @@ pub struct Module<'a> {
     pub codes:      &'a [Code<'a>],
     pub datas:      &'a [Data<'a>],
     pub customs:    &'a [CustomSection<'a>],
+}
+
+
+
+pub struct U32Iter<'a> {
+    values: sti::reader::Reader<'a, u8>,
+}
+
+impl<'a> Iterator for U32Iter<'a> {
+    type Item = u32;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.values.len() == 0 {
+            return None;
+        }
+        return Some(leb128::decode_u32(&mut self.values).unwrap());
+    }
 }
 
 

@@ -1,11 +1,10 @@
 use core::cell::UnsafeCell;
 
-use sti::traits::UnwrapDebug;
 use sti::alloc::Alloc;
 use sti::boks::Box;
 use sti::manual_vec::ManualVec;
 
-use wasm::{ValueType, BlockType, TypeIdx, FuncIdx, TableIdx, MemoryIdx, GlobalIdx, opcode};
+use wasm::{ValueType, BlockType, TypeIdx, FuncIdx, TableIdx, MemoryIdx, GlobalIdx, opcode, BrTable};
 
 /*
 - instructions:
@@ -251,7 +250,7 @@ impl<'a> Compiler<'a> {
     }
 }
 
-impl<'a> wasm::OperatorVisitor for Compiler<'a> {
+impl<'a> wasm::OperatorVisitor<'a> for Compiler<'a> {
     type Output = ();
 
     fn visit_unreachable(&mut self) -> Self::Output {
@@ -339,12 +338,14 @@ impl<'a> wasm::OperatorVisitor for Compiler<'a> {
         self.jump_and_shift(label);
     }
 
-    fn visit_br_table(&mut self, default: u32) -> Self::Output {
+    fn visit_br_table(&mut self, table: BrTable) -> Self::Output {
         self.pop(1);
-        // @temp.
-        self.add_byte(opcode::DROP);
-        self.add_byte(opcode::BR);
-        self.jump_and_shift(default);
+        self.add_byte(opcode::BR_TABLE);
+        self.add_bytes(&table.num_labels.to_ne_bytes());
+        for label in table.labels() {
+            self.jump_and_shift(label);
+        }
+        self.jump_and_shift(table.default);
         self.unreachable();
     }
 

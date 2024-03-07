@@ -60,6 +60,14 @@ impl State {
 
 
     #[inline]
+    fn skip_n(&mut self, n: usize) {
+        unsafe {
+            debug_assert!(self.pc as usize + n <= self.code_end as usize);
+            self.pc = self.pc.add(n);
+        }
+    }
+
+    #[inline]
     fn next_u8(&mut self) -> u8 {
         unsafe {
             debug_assert!(self.code_end as usize - self.pc as usize > 0);
@@ -269,7 +277,17 @@ impl Store {
                 }
 
                 wasm::opcode::BR_TABLE => {
-                    todo!()
+                    let i = state.pop().as_i32() as usize;
+                    let num_labels = state.next_u32() as usize;
+                    if i < num_labels {
+                        state.skip_n(i*12);
+                    }
+                    else {
+                        state.skip_n(num_labels*12);
+                    }
+                    let dst = state.next_jump();
+                    let shift = state.next_shift();
+                    state.jump_and_shift(dst, shift);
                 }
 
                 wasm::opcode::RETURN => unsafe {
@@ -1078,7 +1096,8 @@ impl Store {
                 }
 
                 wasm::opcode::I32_WRAP_I64 => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_i64();
+                    state.push(StackValue::from_i32(v as i32));
                 }
 
                 wasm::opcode::I32_TRUNC_F32_S => {

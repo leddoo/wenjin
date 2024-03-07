@@ -1,13 +1,9 @@
 
 - todo:
     - pass all (`invoke`/`assert_return`) tests.
-        - fix block return types.
-            - shift params for branches.
-        - `br_table`.
+        - tables. & call indirect.
         - globals.
         - data.
-        - tables.
-        - call indirect.
         - elements.
         - memory ops.
         - remaining ops.
