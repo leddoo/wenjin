@@ -4,7 +4,6 @@ use crate::{Error, Table, Memory, Global};
 use crate::store::{Store, FuncKind, StackValue, StackFrame};
 
 
-#[derive(Debug)]
 struct State {
     instance: u32,
     func: u32,
@@ -19,6 +18,7 @@ struct State {
     stack_frame_end: *mut StackValue,
     stack_alloc_end: *mut StackValue,
 
+    memory_data: Option<Memory<'static>>,
     memory: *mut u8,
     memory_size: usize,
 }
@@ -210,11 +210,13 @@ impl Store {
 
             let inst = &self.instances[f.instance as usize];
 
+            let mut memory_data = None;
             let mut memory = core::ptr::null_mut();
             let mut memory_size = 0;
             if let Some(mem_id) = inst.memories.get(0).copied() {
                 let mut mem = Memory::new(&self.memories[mem_id as usize]);
                 (memory, memory_size) = mem.as_mut_ptr();
+                memory_data = Some(mem);
             }
 
 
@@ -231,6 +233,7 @@ impl Store {
                 locals_end,
                 stack_frame_end,
                 stack_alloc_end,
+                memory_data,
                 memory,
                 memory_size,
             }
@@ -308,17 +311,20 @@ impl Store {
                         let func = &self.funcs[frame.func as usize];
                         let FuncKind::Interp(f) = &func.kind else { unreachable_unchecked() };
 
+                        let mut memory_data = state.memory_data;
                         let mut memory = state.memory;
                         let mut memory_size = state.memory_size;
                         if frame.instance != state.instance {
                             let inst = &self.instances[frame.instance as usize];
 
+                            memory_data = None;
                             memory = core::ptr::null_mut();
                             memory_size = 0;
 
                             if let Some(mem_id) = inst.memories.get(0).copied() {
                                 let mut mem = Memory::new(&self.memories[mem_id as usize]);
                                 (memory, memory_size) = mem.as_mut_ptr();
+                                memory_data = Some(mem);
                             }
                         }
 
@@ -333,6 +339,7 @@ impl Store {
                             locals_end: bp.add(f.num_locals as usize),
                             stack_frame_end: bp.add(f.stack_size as usize),
                             stack_alloc_end: state.stack_alloc_end,
+                            memory_data,
                             memory,
                             memory_size,
                         };
@@ -411,17 +418,20 @@ impl Store {
                                 todo!()
                             }
 
+                            let mut memory_data = state.memory_data;
                             let mut memory = state.memory;
                             let mut memory_size = state.memory_size;
                             if f.instance != state.instance {
                                 let inst = &self.instances[f.instance as usize];
 
+                                memory_data = None;
                                 memory = core::ptr::null_mut();
                                 memory_size = 0;
 
                                 if let Some(mem_id) = inst.memories.get(0).copied() {
                                     let mut mem = Memory::new(&self.memories[mem_id as usize]);
                                     (memory, memory_size) = mem.as_mut_ptr();
+                                    memory_data = Some(mem);
                                 }
                             }
 
@@ -436,6 +446,7 @@ impl Store {
                                 locals_end,
                                 stack_frame_end,
                                 stack_alloc_end,
+                                memory_data,
                                 memory,
                                 memory_size,
                             };
@@ -499,125 +510,138 @@ impl Store {
 
                 wasm::opcode::I32_LOAD => {
                     let Some(v) = state.load_op() else { todo!() };
-                    state.push(StackValue::from_i32(i32::from_ne_bytes(v)));
+                    state.push(StackValue::from_i32(i32::from_le_bytes(v)));
                 }
 
                 wasm::opcode::I64_LOAD => {
                     let Some(v) = state.load_op() else { todo!() };
-                    state.push(StackValue::from_i64(i64::from_ne_bytes(v)));
+                    state.push(StackValue::from_i64(i64::from_le_bytes(v)));
                 }
 
                 wasm::opcode::F32_LOAD => {
                     let Some(v) = state.load_op() else { todo!() };
-                    state.push(StackValue::from_f32(f32::from_ne_bytes(v)));
+                    state.push(StackValue::from_f32(f32::from_le_bytes(v)));
                 }
 
                 wasm::opcode::F64_LOAD => {
                     let Some(v) = state.load_op() else { todo!() };
-                    state.push(StackValue::from_f64(f64::from_ne_bytes(v)));
+                    state.push(StackValue::from_f64(f64::from_le_bytes(v)));
                 }
 
                 wasm::opcode::I32_LOAD8_S => {
                     let Some(v) = state.load_op() else { todo!() };
-                    state.push(StackValue::from_i32(i8::from_ne_bytes(v) as i32));
+                    state.push(StackValue::from_i32(i8::from_le_bytes(v) as i32));
                 }
 
                 wasm::opcode::I32_LOAD8_U => {
                     let Some(v) = state.load_op() else { todo!() };
-                    state.push(StackValue::from_i32(u8::from_ne_bytes(v) as i32));
+                    state.push(StackValue::from_i32(u8::from_le_bytes(v) as i32));
                 }
 
                 wasm::opcode::I32_LOAD16_S => {
                     let Some(v) = state.load_op() else { todo!() };
-                    state.push(StackValue::from_i32(i16::from_ne_bytes(v) as i32));
+                    state.push(StackValue::from_i32(i16::from_le_bytes(v) as i32));
                 }
 
                 wasm::opcode::I32_LOAD16_U => {
                     let Some(v) = state.load_op() else { todo!() };
-                    state.push(StackValue::from_i32(u16::from_ne_bytes(v) as i32));
+                    state.push(StackValue::from_i32(u16::from_le_bytes(v) as i32));
                 }
 
                 wasm::opcode::I64_LOAD8_S => {
                     let Some(v) = state.load_op() else { todo!() };
-                    state.push(StackValue::from_i64(i8::from_ne_bytes(v) as i64));
+                    state.push(StackValue::from_i64(i8::from_le_bytes(v) as i64));
                 }
 
                 wasm::opcode::I64_LOAD8_U => {
                     let Some(v) = state.load_op() else { todo!() };
-                    state.push(StackValue::from_i64(u8::from_ne_bytes(v) as i64));
+                    state.push(StackValue::from_i64(u8::from_le_bytes(v) as i64));
                 }
 
                 wasm::opcode::I64_LOAD16_S => {
                     let Some(v) = state.load_op() else { todo!() };
-                    state.push(StackValue::from_i64(i16::from_ne_bytes(v) as i64));
+                    state.push(StackValue::from_i64(i16::from_le_bytes(v) as i64));
                 }
 
                 wasm::opcode::I64_LOAD16_U => {
                     let Some(v) = state.load_op() else { todo!() };
-                    state.push(StackValue::from_i64(u16::from_ne_bytes(v) as i64));
+                    state.push(StackValue::from_i64(u16::from_le_bytes(v) as i64));
                 }
 
                 wasm::opcode::I64_LOAD32_S => {
                     let Some(v) = state.load_op() else { todo!() };
-                    state.push(StackValue::from_i64(i32::from_ne_bytes(v) as i64));
+                    state.push(StackValue::from_i64(i32::from_le_bytes(v) as i64));
                 }
 
                 wasm::opcode::I64_LOAD32_U => {
                     let Some(v) = state.load_op() else { todo!() };
-                    state.push(StackValue::from_i64(u32::from_ne_bytes(v) as i64));
+                    state.push(StackValue::from_i64(u32::from_le_bytes(v) as i64));
                 }
 
                 wasm::opcode::I32_STORE => {
                     let v = state.pop().as_i32();
-                    let Some(()) = state.store_op(v.to_ne_bytes()) else { todo!() };
+                    let Some(()) = state.store_op(v.to_le_bytes()) else { todo!() };
                 }
 
                 wasm::opcode::I64_STORE => {
                     let v = state.pop().as_i64();
-                    let Some(()) = state.store_op(v.to_ne_bytes()) else { todo!() };
+                    let Some(()) = state.store_op(v.to_le_bytes()) else { todo!() };
                 }
 
                 wasm::opcode::F32_STORE => {
                     let v = state.pop().as_f32();
-                    let Some(()) = state.store_op(v.to_ne_bytes()) else { todo!() };
+                    let Some(()) = state.store_op(v.to_le_bytes()) else { todo!() };
                 }
 
                 wasm::opcode::F64_STORE => {
                     let v = state.pop().as_f64();
-                    let Some(()) = state.store_op(v.to_ne_bytes()) else { todo!() };
+                    let Some(()) = state.store_op(v.to_le_bytes()) else { todo!() };
                 }
 
                 wasm::opcode::I32_STORE8 => {
                     let v = state.pop().as_i32() as u8;
-                    let Some(()) = state.store_op(v.to_ne_bytes()) else { todo!() };
+                    let Some(()) = state.store_op(v.to_le_bytes()) else { todo!() };
                 }
 
                 wasm::opcode::I32_STORE16 => {
                     let v = state.pop().as_i32() as u16;
-                    let Some(()) = state.store_op(v.to_ne_bytes()) else { todo!() };
+                    let Some(()) = state.store_op(v.to_le_bytes()) else { todo!() };
                 }
 
                 wasm::opcode::I64_STORE8 => {
                     let v = state.pop().as_i64() as u8;
-                    let Some(()) = state.store_op(v.to_ne_bytes()) else { todo!() };
+                    let Some(()) = state.store_op(v.to_le_bytes()) else { todo!() };
                 }
 
                 wasm::opcode::I64_STORE16 => {
                     let v = state.pop().as_i64() as u16;
-                    let Some(()) = state.store_op(v.to_ne_bytes()) else { todo!() };
+                    let Some(()) = state.store_op(v.to_le_bytes()) else { todo!() };
                 }
 
                 wasm::opcode::I64_STORE32 => {
                     let v = state.pop().as_i64() as u32;
-                    let Some(()) = state.store_op(v.to_ne_bytes()) else { todo!() };
+                    let Some(()) = state.store_op(v.to_le_bytes()) else { todo!() };
                 }
 
                 wasm::opcode::MEMORY_SIZE => {
-                    return Err(Error::Unimplemented);
+                    let mem = state.next_u32();
+                    if mem != 0 { todo!() }
+
+                    state.push(StackValue::from_i32((state.memory_size / wasm::PAGE_SIZE) as i32));
                 }
 
                 wasm::opcode::MEMORY_GROW => {
-                    return Err(Error::Unimplemented);
+                    let mem = state.next_u32();
+                    if mem != 0 { todo!() }
+
+                    let delta = state.pop().as_i32() as u32;
+
+                    let mem = state.memory_data.as_mut().unwrap();
+                    let result = match mem.grow(delta) {
+                        Ok(n) => n as i32,
+                        Err(_) => -1,
+                    };
+                    state.push(StackValue::from_i32(result));
                 }
 
                 wasm::opcode::I32_CONST => {
@@ -1040,7 +1064,9 @@ impl Store {
                 }
 
                 wasm::opcode::F32_NEAREST => {
-                    return Err(Error::Unimplemented);
+                    // @todo: this should be `round_ties_even`.
+                    let v = state.pop().as_f32();
+                    state.push(StackValue::from_f32(v.round()));
                 }
 
                 wasm::opcode::F32_SQRT => {
@@ -1109,7 +1135,9 @@ impl Store {
                 }
 
                 wasm::opcode::F64_NEAREST => {
-                    return Err(Error::Unimplemented);
+                    // @todo: this should be `round_ties_even`.
+                    let v = state.pop().as_f64();
+                    state.push(StackValue::from_f64(v.round()));
                 }
 
                 wasm::opcode::F64_SQRT => {
