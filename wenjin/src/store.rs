@@ -10,6 +10,7 @@ use sti::manual_vec::ManualVec;
 use crate::{Error, Value};
 use crate::table::{TableData, Table};
 use crate::memory::{MemoryData, Memory};
+use crate::global::{GlobalData, Global};
 use crate::interp;
 
 
@@ -32,8 +33,8 @@ pub struct MemoryId { id: u32 }
 pub struct GlobalId { id: u32 }
 
 
-#[derive(Clone, Copy, Debug)]
-pub struct RefValue { pub id: u32 }
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RefValue { pub(crate) id: u32 }
 
 impl RefValue {
     pub const NULL: RefValue = RefValue { id: u32::MAX };
@@ -59,6 +60,7 @@ pub struct Store {
     pub(crate) funcs: ManualVec<FuncData>,
     pub(crate) tables: ManualVec<Box<UnsafeCell<TableData>>>,
     pub(crate) memories: ManualVec<Box<UnsafeCell<MemoryData>>>,
+    pub(crate) globals: ManualVec<Box<UnsafeCell<GlobalData>>>,
     pub(crate) thread: ThreadData,
 }
 
@@ -143,6 +145,8 @@ impl StackValue {
             Value::I64(v) => Self::from_i64(v),
             Value::F32(v) => Self::from_f32(v),
             Value::F64(v) => Self::from_f64(v),
+            Value::FuncRef(v) => Self::from_i32(v.id as i32),
+            Value::ExternRef(v) => Self::from_i32(v.id as i32),
         }
     }
 
@@ -200,6 +204,7 @@ impl Store {
             funcs: ManualVec::new(),
             tables: ManualVec::new(),
             memories: ManualVec::new(),
+            globals: ManualVec::new(),
             thread: ThreadData {
                 stack: ManualVec::new(),
                 frames: ManualVec::new(),
@@ -325,7 +330,22 @@ impl Store {
         }
 
 
-        let globals = ManualVec::new();
+        let mut globals = ManualVec::with_cap(wasm.globals.len()).ok_or_else(|| Error::OutOfMemory)?;
+        for global in wasm.globals {
+            let init = match global.init {
+                wasm::ConstExpr::I32(v) => Value::I32(v),
+                wasm::ConstExpr::I64(v) => Value::I64(v),
+                wasm::ConstExpr::F32(v) => Value::F32(v),
+                wasm::ConstExpr::F64(v) => Value::F64(v),
+                wasm::ConstExpr::Global(idx) => Global::new(&self.globals[globals[idx as usize] as usize]).get(),
+                wasm::ConstExpr::RefNull(ty) => match ty {
+                    wasm::RefType::FuncRef => Value::FuncRef(RefValue::NULL),
+                    wasm::RefType::ExternRef => Value::ExternRef(RefValue::NULL),
+                },
+            };
+
+            globals.push(self.new_global(global.ty.mutt, init)?.id).unwrap_debug();
+        }
 
 
         for elem in wasm.elements {
@@ -503,6 +523,17 @@ impl Store {
         Ok(Memory::new(
             self.memories.get(id.id as usize)
             .ok_or(Error::InvalidHandle)?))
+    }
+
+    pub fn new_global(&mut self, mutable: bool, value: Value) -> Result<GlobalId, Error> {
+        let id = GlobalId {
+            id: self.globals.len().try_into().map_err(|_| Error::OutOfMemory)?,
+        };
+
+        let global = GlobalData::new(mutable, value);
+        let global = Box::try_new_in(GlobalAlloc, UnsafeCell::new(global)).ok_or_else(|| Error::OutOfMemory)?;
+        self.globals.push_or_alloc(global).map_err(|_| Error::OutOfMemory)?;
+        return Ok(id);
     }
 }
 

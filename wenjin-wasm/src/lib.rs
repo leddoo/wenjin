@@ -87,6 +87,13 @@ impl RefType {
             _ => return None,
         })
     }
+
+    pub fn to_value_type(self) -> ValueType {
+        match self {
+            RefType::FuncRef => ValueType::FuncRef,
+            RefType::ExternRef => ValueType::ExternRef,
+        }
+    }
 }
 
 
@@ -190,6 +197,8 @@ pub enum ConstExpr {
     I64(i64),
     F32(f32),
     F64(f64),
+    Global(GlobalIdx),
+    RefNull(RefType),
 }
 
 #[derive(Clone, Copy, Debug)]

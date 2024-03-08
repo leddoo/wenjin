@@ -1172,7 +1172,7 @@ impl<'a> wasm::OperatorVisitor<'a> for Compiler<'a> {
         self.add_byte(opcode::I64_EXTEND32_S);
     }
 
-    fn visit_ref_null(&mut self) -> Self::Output {
+    fn visit_ref_null(&mut self, _ty: wasm::RefType) -> Self::Output {
         self.push(1);
         self.add_byte(opcode::REF_NULL);
     }

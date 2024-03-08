@@ -223,25 +223,51 @@ impl<'a> Validator<'a> {
         .ok_or_else(|| todo!())
     }
 
-    // @todo: move func logic here.
+    fn func(&self, idx: FuncIdx) -> Result<FuncType<'a>, ValidatorError> {
+        let idx = idx as usize;
+        let imports = self.module.imports.funcs;
+        let type_idx = match imports.get(idx).copied() {
+            Some(it) => it,
+            None => 
+                self.module.funcs.get(idx - imports.len()).copied()
+                .ok_or_else(|| todo!())?,
+        };
+
+        Ok(self.module.types.get(type_idx as usize).copied()
+        .ok_or_else(|| todo!())?)
+    }
 
     fn table(&self, idx: TableIdx) -> Result<TableType, ValidatorError> {
-        // @todo: imports.
-        self.module.tables.get(idx as usize).copied()
-        .ok_or_else(|| todo!())
+        let idx = idx as usize;
+        let imports = self.module.imports.tables;
+        Ok(match imports.get(idx).copied() {
+            Some(it) => it,
+            None => 
+                self.module.tables.get(idx - imports.len()).copied()
+                .ok_or_else(|| todo!())?,
+        })
     }
 
     fn memory(&self, idx: TableIdx) -> Result<MemoryType, ValidatorError> {
-        // @todo: imports.
-        self.module.memories.get(idx as usize).copied()
-        .ok_or_else(|| todo!())
+        let idx = idx as usize;
+        let imports = self.module.imports.memories;
+        Ok(match imports.get(idx).copied() {
+            Some(it) => it,
+            None => 
+                self.module.memories.get(idx - imports.len()).copied()
+                .ok_or_else(|| todo!())?,
+        })
     }
 
     fn global(&self, idx: u32) -> Result<GlobalType, ValidatorError> {
-        // @todo: imports.
-        Ok(self.module.globals.get(idx as usize).copied()
-        .ok_or_else(|| todo!())?
-        .ty)
+        let idx = idx as usize;
+        let imports = self.module.imports.globals;
+        Ok(match imports.get(idx).copied() {
+            Some(it) => it,
+            None => 
+                self.module.globals.get(idx - imports.len()).copied()
+                .ok_or_else(|| todo!())?.ty,
+        })
     }
 
 
@@ -398,21 +424,7 @@ impl<'a> OperatorVisitor<'a> for Validator<'a> {
     }
 
     fn visit_call(&mut self, func: FuncIdx) -> Self::Output {
-        let func = func as usize;
-
-        let imports = self.module.imports.funcs;
-
-        let type_idx = match imports.get(func).copied() {
-            Some(it) => it,
-            None => 
-                self.module.funcs.get(func - imports.len()).copied()
-                .ok_or_else(|| todo!())?,
-        };
-
-        let ty =
-            self.module.types.get(type_idx as usize).copied()
-            .ok_or_else(|| todo!())?;
-
+        let ty = self.func(func)?;
         self.expect_n(ty.params)?;
         self.push_n(ty.rets)
     }
@@ -1121,8 +1133,8 @@ impl<'a> OperatorVisitor<'a> for Validator<'a> {
         self.un_op(ValueType::I64)
     }
 
-    fn visit_ref_null(&mut self) -> Self::Output {
-        todo!()
+    fn visit_ref_null(&mut self, ty: RefType) -> Self::Output {
+        self.push(ty.to_value_type())
     }
 
     fn visit_ref_is_null(&mut self) -> Self::Output {

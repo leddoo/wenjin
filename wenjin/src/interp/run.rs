@@ -1,6 +1,6 @@
 use core::hint::unreachable_unchecked;
 
-use crate::{Error, Memory, Table};
+use crate::{Error, Table, Memory, Global};
 use crate::store::{Store, FuncKind, StackValue, StackFrame};
 
 
@@ -480,11 +480,17 @@ impl Store {
                 }
 
                 wasm::opcode::GLOBAL_GET => {
-                    return Err(Error::Unimplemented);
+                    let idx = state.next_u32();
+                    let inst = &self.instances[state.instance as usize];
+                    let global = Global::new(&self.globals[inst.globals[idx as usize] as usize]);
+                    state.push(StackValue::from_value(global.get()));
                 }
 
                 wasm::opcode::GLOBAL_SET => {
-                    return Err(Error::Unimplemented);
+                    let idx = state.next_u32();
+                    let inst = &self.instances[state.instance as usize];
+                    let mut global = Global::new(&self.globals[inst.globals[idx as usize] as usize]);
+                    global.set(state.pop().to_value(global.get().ty()));
                 }
 
                 wasm::opcode::TABLE_GET => {

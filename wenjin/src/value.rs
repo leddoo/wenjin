@@ -4,6 +4,8 @@ pub enum Value {
     I64(i64),
     F32(f32),
     F64(f64),
+    FuncRef(crate::RefValue),
+    ExternRef(crate::RefValue),
 }
 
 impl Value {
@@ -14,6 +16,8 @@ impl Value {
             I64 (_) => wasm::ValueType::I64,
             F32 (_) => wasm::ValueType::F32,
             F64 (_) => wasm::ValueType::F64,
+            FuncRef (_) => wasm::ValueType::FuncRef,
+            ExternRef (_) => wasm::ValueType::ExternRef,
         }
     }
 }

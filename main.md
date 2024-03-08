@@ -1,7 +1,6 @@
 
 - todo:
     - pass all (`invoke`/`assert_return`) tests.
-        - globals.
         - memory ops.
         - remaining ops.
         - little endian.

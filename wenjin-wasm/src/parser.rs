@@ -361,6 +361,8 @@ impl<'a> Parser<'a> {
             Operator::I64Const { value } => ConstExpr::I64(value),
             Operator::F32Const { value } => ConstExpr::F32(value),
             Operator::F64Const { value } => ConstExpr::F64(value),
+            Operator::GlobalGet { idx } => ConstExpr::Global(idx),
+            Operator::RefNull { ty } => ConstExpr::RefNull(ty),
 
             _ => todo!(),
         };
@@ -574,7 +576,7 @@ impl<'a> Parser<'a> {
             opcode::I64_EXTEND8_S   => v.visit_i64_extend8_s(),
             opcode::I64_EXTEND16_S  => v.visit_i64_extend16_s(),
             opcode::I64_EXTEND32_S  => v.visit_i64_extend32_s(),
-            opcode::REF_NULL        => todo!(),
+            opcode::REF_NULL        => v.visit_ref_null(self.parse_ref_type()?),
             opcode::REF_IS_NULL     => todo!(),
             opcode::REF_FUNC        => todo!(),
 

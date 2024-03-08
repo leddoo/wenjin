@@ -180,7 +180,7 @@ macro_rules! for_each_operator {
             I64Extend8S => visit_i64_extend8_s
             I64Extend16S => visit_i64_extend16_s
             I64Extend32S => visit_i64_extend32_s
-            RefNull => visit_ref_null
+            RefNull { ty: $crate::RefType} => visit_ref_null
             RefIsNull => visit_ref_is_null
             RefFunc => visit_ref_func
             MemorySize { mem: $crate::MemoryIdx } => visit_memory_size

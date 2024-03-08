@@ -42,7 +42,7 @@ fn main() {
         ("forward.wast", &include_bytes!("../../testsuite-bin/forward.wast")[..]),
         ("func.wast", &include_bytes!("../../testsuite-bin/func.wast")[..]),
         //("func_ptrs.wast", &include_bytes!("../../testsuite-bin/func_ptrs.wast")[..]),
-        //("global.wast", &include_bytes!("../../testsuite-bin/global.wast")[..]),
+        ("global.wast", &include_bytes!("../../testsuite-bin/global.wast")[..]),
         ("i32.wast", &include_bytes!("../../testsuite-bin/i32.wast")[..]),
         ("i64.wast", &include_bytes!("../../testsuite-bin/i64.wast")[..]),
         ("if.wast", &include_bytes!("../../testsuite-bin/if.wast")[..]),
