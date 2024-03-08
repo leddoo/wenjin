@@ -411,7 +411,10 @@ impl<'a> Parser<'a> {
             opcode::CALL_INDIRECT   => v.visit_call_indirect(self.parse_u32()?, self.parse_u32()?),
             opcode::DROP            => v.visit_drop(),
             opcode::SELECT          => v.visit_select(),
-            opcode::TYPED_SELECT    => todo!(),
+            opcode::TYPED_SELECT    => {
+                self.reader.expect(0x01).map_err(|_| todo!())?;
+                v.visit_typed_select(self.parse_value_type()?)
+            }
             opcode::LOCAL_GET       => v.visit_local_get(self.parse_u32()?),
             opcode::LOCAL_SET       => v.visit_local_set(self.parse_u32()?),
             opcode::LOCAL_TEE       => v.visit_local_tee(self.parse_u32()?),
@@ -577,7 +580,7 @@ impl<'a> Parser<'a> {
             opcode::I64_EXTEND16_S  => v.visit_i64_extend16_s(),
             opcode::I64_EXTEND32_S  => v.visit_i64_extend32_s(),
             opcode::REF_NULL        => v.visit_ref_null(self.parse_ref_type()?),
-            opcode::REF_IS_NULL     => todo!(),
+            opcode::REF_IS_NULL     => v.visit_ref_is_null(),
             opcode::REF_FUNC        => todo!(),
 
             0xfc => {

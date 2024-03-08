@@ -445,10 +445,6 @@ impl Store {
                     }
                 }
 
-                wasm::opcode::CALL_INDIRECT => {
-                    return Err(Error::Unimplemented);
-                }
-
                 wasm::opcode::DROP => {
                     state.pop();
                 }
@@ -700,47 +696,58 @@ impl Store {
                 }
 
                 wasm::opcode::I64_EQZ => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_i64();
+                    state.push(StackValue::from_i32((v == 0) as i32));
                 }
 
                 wasm::opcode::I64_EQ => {
-                    return Err(Error::Unimplemented);
+                    let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
+                    state.push(StackValue::from_i32((a == b) as i32));
                 }
 
                 wasm::opcode::I64_NE => {
-                    return Err(Error::Unimplemented);
+                    let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
+                    state.push(StackValue::from_i32((a != b) as i32));
                 }
 
                 wasm::opcode::I64_LT_S => {
-                    return Err(Error::Unimplemented);
+                    let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
+                    state.push(StackValue::from_i32((a < b) as i32));
                 }
 
                 wasm::opcode::I64_LT_U => {
-                    return Err(Error::Unimplemented);
+                    let (b, a) = (state.pop().as_i64() as u64, state.pop().as_i64() as u64);
+                    state.push(StackValue::from_i32((a < b) as i32));
                 }
 
                 wasm::opcode::I64_GT_S => {
-                    return Err(Error::Unimplemented);
+                    let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
+                    state.push(StackValue::from_i32((a > b) as i32));
                 }
 
                 wasm::opcode::I64_GT_U => {
-                    return Err(Error::Unimplemented);
+                    let (b, a) = (state.pop().as_i64() as u64, state.pop().as_i64() as u64);
+                    state.push(StackValue::from_i32((a > b) as i32));
                 }
 
                 wasm::opcode::I64_LE_S => {
-                    return Err(Error::Unimplemented);
+                    let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
+                    state.push(StackValue::from_i32((a <= b) as i32));
                 }
 
                 wasm::opcode::I64_LE_U => {
-                    return Err(Error::Unimplemented);
+                    let (b, a) = (state.pop().as_i64() as u64, state.pop().as_i64() as u64);
+                    state.push(StackValue::from_i32((a <= b) as i32));
                 }
 
                 wasm::opcode::I64_GE_S => {
-                    return Err(Error::Unimplemented);
+                    let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
+                    state.push(StackValue::from_i32((a >= b) as i32));
                 }
 
                 wasm::opcode::I64_GE_U => {
-                    return Err(Error::Unimplemented);
+                    let (b, a) = (state.pop().as_i64() as u64, state.pop().as_i64() as u64);
+                    state.push(StackValue::from_i32((a >= b) as i32));
                 }
 
                 wasm::opcode::F32_EQ => {
@@ -881,23 +888,28 @@ impl Store {
                 }
 
                 wasm::opcode::I32_SHL => {
-                    return Err(Error::Unimplemented);
+                    let (b, a) = (state.pop().as_i32(), state.pop().as_i32());
+                    state.push(StackValue::from_i32(a.wrapping_shl(b as u32)));
                 }
 
                 wasm::opcode::I32_SHR_S => {
-                    return Err(Error::Unimplemented);
+                    let (b, a) = (state.pop().as_i32(), state.pop().as_i32());
+                    state.push(StackValue::from_i32(a.wrapping_shr(b as u32)));
                 }
 
                 wasm::opcode::I32_SHR_U => {
-                    return Err(Error::Unimplemented);
+                    let (b, a) = (state.pop().as_i32() as u32, state.pop().as_i32() as u32);
+                    state.push(StackValue::from_i32(a.wrapping_shr(b as u32) as i32));
                 }
 
                 wasm::opcode::I32_ROTL => {
-                    return Err(Error::Unimplemented);
+                    let (b, a) = (state.pop().as_i32(), state.pop().as_i32());
+                    state.push(StackValue::from_i32(a.rotate_left(b as u32)));
                 }
 
                 wasm::opcode::I32_ROTR => {
-                    return Err(Error::Unimplemented);
+                    let (b, a) = (state.pop().as_i32(), state.pop().as_i32());
+                    state.push(StackValue::from_i32(a.rotate_right(b as u32)));
                 }
 
                 wasm::opcode::I64_CLZ => {
@@ -931,19 +943,35 @@ impl Store {
                 }
 
                 wasm::opcode::I64_DIV_S => {
-                    return Err(Error::Unimplemented);
+                    let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
+                    if b == 0 {
+                        todo!()
+                    }
+                    state.push(StackValue::from_i64(a.wrapping_div(b)));
                 }
 
                 wasm::opcode::I64_DIV_U => {
-                    return Err(Error::Unimplemented);
+                    let (b, a) = (state.pop().as_i64() as u64, state.pop().as_i64() as u64);
+                    if b == 0 {
+                        todo!()
+                    }
+                    state.push(StackValue::from_i64(a.wrapping_div(b) as i64));
                 }
 
                 wasm::opcode::I64_REM_S => {
-                    return Err(Error::Unimplemented);
+                    let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
+                    if b == 0 {
+                        todo!()
+                    }
+                    state.push(StackValue::from_i64(a.wrapping_rem(b)));
                 }
 
                 wasm::opcode::I64_REM_U => {
-                    return Err(Error::Unimplemented);
+                    let (b, a) = (state.pop().as_i64() as u64, state.pop().as_i64() as u64);
+                    if b == 0 {
+                        todo!()
+                    }
+                    state.push(StackValue::from_i64(a.wrapping_rem(b) as i64));
                 }
 
                 wasm::opcode::I64_AND => {
@@ -962,23 +990,28 @@ impl Store {
                 }
 
                 wasm::opcode::I64_SHL => {
-                    return Err(Error::Unimplemented);
+                    let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
+                    state.push(StackValue::from_i64(a.wrapping_shl(b as u32)));
                 }
 
                 wasm::opcode::I64_SHR_S => {
-                    return Err(Error::Unimplemented);
+                    let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
+                    state.push(StackValue::from_i64(a.wrapping_shr(b as u32)));
                 }
 
                 wasm::opcode::I64_SHR_U => {
-                    return Err(Error::Unimplemented);
+                    let (b, a) = (state.pop().as_i64() as u64, state.pop().as_i64() as u64);
+                    state.push(StackValue::from_i64(a.wrapping_shr(b as u32) as i64));
                 }
 
                 wasm::opcode::I64_ROTL => {
-                    return Err(Error::Unimplemented);
+                    let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
+                    state.push(StackValue::from_i64(a.rotate_left(b as u32)));
                 }
 
                 wasm::opcode::I64_ROTR => {
-                    return Err(Error::Unimplemented);
+                    let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
+                    state.push(StackValue::from_i64(a.rotate_right(b as u32)));
                 }
 
                 wasm::opcode::F32_ABS => {
@@ -1051,23 +1084,28 @@ impl Store {
                 }
 
                 wasm::opcode::F64_ABS => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_f64();
+                    state.push(StackValue::from_f64(v.abs()));
                 }
 
                 wasm::opcode::F64_NEG => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_f64();
+                    state.push(StackValue::from_f64(-v));
                 }
 
                 wasm::opcode::F64_CEIL => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_f64();
+                    state.push(StackValue::from_f64(v.ceil()));
                 }
 
                 wasm::opcode::F64_FLOOR => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_f64();
+                    state.push(StackValue::from_f64(v.floor()));
                 }
 
                 wasm::opcode::F64_TRUNC => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_f64();
+                    state.push(StackValue::from_f64(v.trunc()));
                 }
 
                 wasm::opcode::F64_NEAREST => {
@@ -1075,7 +1113,8 @@ impl Store {
                 }
 
                 wasm::opcode::F64_SQRT => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_f64();
+                    state.push(StackValue::from_f64(v.sqrt()));
                 }
 
                 wasm::opcode::F64_ADD => {
@@ -1119,127 +1158,145 @@ impl Store {
                 }
 
                 wasm::opcode::I32_TRUNC_F32_S => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_f32();
+                    state.push(StackValue::from_i32(v as i32));
                 }
 
                 wasm::opcode::I32_TRUNC_F32_U => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_f32() as u32;
+                    state.push(StackValue::from_i32(v as i32));
                 }
 
                 wasm::opcode::I32_TRUNC_F64_S => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_f64();
+                    state.push(StackValue::from_i32(v as i32));
                 }
 
                 wasm::opcode::I32_TRUNC_F64_U => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_f64() as u32;
+                    state.push(StackValue::from_i32(v as i32));
                 }
 
                 wasm::opcode::I64_EXTEND_I32_S => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_i32();
+                    state.push(StackValue::from_i64(v as i64));
                 }
 
                 wasm::opcode::I64_EXTEND_I32_U => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_i32() as u32;
+                    state.push(StackValue::from_i64(v as i64));
                 }
 
                 wasm::opcode::I64_TRUNC_F32_S => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_f32();
+                    state.push(StackValue::from_i64(v as i64));
                 }
 
                 wasm::opcode::I64_TRUNC_F32_U => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_f32() as u64;
+                    state.push(StackValue::from_i64(v as i64));
                 }
 
                 wasm::opcode::I64_TRUNC_F64_S => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_f64();
+                    state.push(StackValue::from_i64(v as i64));
                 }
 
                 wasm::opcode::I64_TRUNC_F64_U => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_f64() as u64;
+                    state.push(StackValue::from_i64(v as i64));
                 }
 
                 wasm::opcode::F32_CONVERT_I32_S => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_i32();
+                    state.push(StackValue::from_f32(v as f32));
                 }
 
                 wasm::opcode::F32_CONVERT_I32_U => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_i32() as u32;
+                    state.push(StackValue::from_f32(v as f32));
                 }
 
                 wasm::opcode::F32_CONVERT_I64_S => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_i64();
+                    state.push(StackValue::from_f32(v as f32));
                 }
 
                 wasm::opcode::F32_CONVERT_I64_U => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_i64() as u64;
+                    state.push(StackValue::from_f32(v as f32));
                 }
 
                 wasm::opcode::F32_DEMOTE_F64 => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_f64();
+                    state.push(StackValue::from_f32(v as f32));
                 }
 
                 wasm::opcode::F64_CONVERT_I32_S => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_i32();
+                    state.push(StackValue::from_f64(v as f64));
                 }
 
                 wasm::opcode::F64_CONVERT_I32_U => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_i32() as u32;
+                    state.push(StackValue::from_f64(v as f64));
                 }
 
                 wasm::opcode::F64_CONVERT_I64_S => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_i64();
+                    state.push(StackValue::from_f64(v as f64));
                 }
 
                 wasm::opcode::F64_CONVERT_I64_U => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_i64() as u64;
+                    state.push(StackValue::from_f64(v as f64));
                 }
 
                 wasm::opcode::F64_PROMOTE_F32 => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_f32();
+                    state.push(StackValue::from_f64(v as f64));
                 }
 
-                wasm::opcode::I32_REINTERPRET_F32 => {
-                    return Err(Error::Unimplemented);
-                }
+                wasm::opcode::I32_REINTERPRET_F32 => {}
 
-                wasm::opcode::I64_REINTERPRET_F64 => {
-                    return Err(Error::Unimplemented);
-                }
+                wasm::opcode::I64_REINTERPRET_F64 => {}
 
-                wasm::opcode::F32_REINTERPRET_I32 => {
-                    return Err(Error::Unimplemented);
-                }
+                wasm::opcode::F32_REINTERPRET_I32 => {}
 
-                wasm::opcode::F64_REINTERPRET_I64 => {
-                    return Err(Error::Unimplemented);
-                }
+                wasm::opcode::F64_REINTERPRET_I64 => {}
 
                 wasm::opcode::I32_EXTEND8_S => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_i32() as i8;
+                    state.push(StackValue::from_i32(v as i32));
                 }
 
                 wasm::opcode::I32_EXTEND16_S => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_i32() as i16;
+                    state.push(StackValue::from_i32(v as i32));
                 }
 
                 wasm::opcode::I64_EXTEND8_S => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_i64() as i8;
+                    state.push(StackValue::from_i64(v as i64));
                 }
 
                 wasm::opcode::I64_EXTEND16_S => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_i64() as i16;
+                    state.push(StackValue::from_i64(v as i64));
                 }
 
                 wasm::opcode::I64_EXTEND32_S => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_i64() as i32;
+                    state.push(StackValue::from_i64(v as i64));
                 }
 
                 wasm::opcode::REF_NULL => {
-                    return Err(Error::Unimplemented);
+                    state.push(StackValue::from_i32(u32::MAX as i32));
                 }
 
                 wasm::opcode::REF_IS_NULL => {
-                    return Err(Error::Unimplemented);
+                    let v = state.pop().as_i32() as u32;
+                    state.push(StackValue::from_i32((v == u32::MAX) as i32));
                 }
 
                 wasm::opcode::REF_FUNC => {
@@ -1250,11 +1307,40 @@ impl Store {
                     let op = state.next_u32();
                     match op {
                         wasm::opcode::xfc::MEMORY_COPY => {
-                            return Err(Error::Unimplemented);
+                            let (dst_mem, src_mem) = (state.next_u32(), state.next_u32());
+                            if dst_mem != 0 || src_mem != 0 {
+                                return Err(Error::Unimplemented);
+                            }
+
+                            let n = state.pop().as_i32() as usize;
+                            let src = state.pop().as_i32() as usize;
+                            let dst = state.pop().as_i32() as usize;
+
+                            let Some(src_end) = src.checked_add(n) else { todo!() };
+                            let Some(dst_end) = src.checked_add(n) else { todo!() };
+                            if src_end > state.memory_size || dst_end > state.memory_size { todo!() }
+
+                            unsafe {
+                                core::ptr::copy(state.memory.add(src), state.memory.add(dst), n);
+                            }
                         }
 
                         wasm::opcode::xfc::MEMORY_FILL => {
-                            return Err(Error::Unimplemented);
+                            let mem = state.next_u32();
+                            if mem != 0 {
+                                return Err(Error::Unimplemented);
+                            }
+
+                            let n = state.pop().as_i32() as usize;
+                            let v = state.pop().as_i32() as u8;
+                            let dst = state.pop().as_i32() as usize;
+
+                            let Some(dst_end) = dst.checked_add(n) else { todo!() };
+                            if dst_end > state.memory_size { todo!() }
+
+                            unsafe {
+                                core::ptr::write_bytes(state.memory.add(dst), v, n);
+                            }
                         }
 
                         _ => unreachable!()

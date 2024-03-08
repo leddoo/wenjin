@@ -1,12 +1,12 @@
 
 - todo:
     - pass all (`invoke`/`assert_return`) tests.
-        - memory ops.
-        - remaining ops.
         - little endian.
             - memory stuff `to_le_bytes`.
             - for `CType`, could use trait.
               but maybe we just static-assert little endian.
+        - memory grow/size.
+        - fp nearest.
     - host funcs.
     - wasm types & typed func.
     - rest of the owl:

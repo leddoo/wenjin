@@ -406,7 +406,7 @@ impl<'a> OperatorVisitor<'a> for Validator<'a> {
         let tys = self.frame_br_types(&frame);
         for label in table.labels() {
             let f = self.label(label)?;
-            if self.frame_br_types(&f) != tys {
+            if !self.is_unreachable() && self.frame_br_types(&f) != tys {
                 todo!();
             }
         }
@@ -470,8 +470,10 @@ impl<'a> OperatorVisitor<'a> for Validator<'a> {
     }
 
     fn visit_typed_select(&mut self, ty: ValueType) -> Self::Output {
-        let _ = ty;
-        todo!()
+        self.expect(ValueType::I32)?;
+        self.expect(ty)?;
+        self.expect(ty)?;
+        self.push(ty)
     }
 
     fn visit_local_get(&mut self, idx: u32) -> Self::Output {
@@ -1138,7 +1140,22 @@ impl<'a> OperatorVisitor<'a> for Validator<'a> {
     }
 
     fn visit_ref_is_null(&mut self) -> Self::Output {
-        todo!()
+        if !self.is_unreachable() {
+            let ty = self.pop()?;
+            match ty {
+                ValueType::I32 |
+                ValueType::I64 |
+                ValueType::F32 |
+                ValueType::F64 |
+                ValueType::V128 => todo!(),
+
+                ValueType::FuncRef |
+                ValueType::ExternRef => (),
+            }
+
+            self.push(ValueType::I32)?;
+        }
+        return Ok(());
     }
 
     fn visit_ref_func(&mut self) -> Self::Output {
