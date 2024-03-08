@@ -1,12 +1,13 @@
 
 - todo:
     - pass all (`invoke`/`assert_return`) tests.
-        - tables. & call indirect.
         - globals.
-        - data.
-        - elements.
         - memory ops.
         - remaining ops.
+        - little endian.
+            - memory stuff `to_le_bytes`.
+            - for `CType`, could use trait.
+              but maybe we just static-assert little endian.
     - host funcs.
     - wasm types & typed func.
     - rest of the owl:
@@ -18,5 +19,9 @@
 
 - robustness:
     - is there a `loop.params-shifter`-like validation test with an invalid push (type) in the loop?
+
+- sti:
+    - `reserve_extra` retry with exact value on failure?
+    - `reserve_extra` `assume!(self.cap >= min_cap)`.
 
 

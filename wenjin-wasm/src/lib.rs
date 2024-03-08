@@ -214,10 +214,9 @@ pub enum ExportKind {
 }
 
 
-// @todo: support refs.
 #[derive(Clone, Copy, Debug)]
 pub struct Element<'a> {
-    pub ty: ValueType,
+    pub ty: RefType,
     pub kind: ElementKind,
     pub values: &'a [u32],
 }

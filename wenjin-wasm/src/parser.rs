@@ -269,8 +269,33 @@ impl<'a> Parser<'a> {
                 }
 
                 Element {
-                    ty: ValueType::FuncRef,
+                    ty: RefType::FuncRef,
                     kind: ElementKind::Active { table: 0, offset: offset as u32 },
+                    values: values.leak(),
+                }
+            }
+
+            2 => {
+                let table = self.parse_u32()?;
+
+                let ConstExpr::I32(offset) = self.parse_const_expr()? else {
+                    todo!()
+                };
+
+                // funcref.
+                if self.reader.expect(0x00).is_err() {
+                    todo!();
+                }
+
+                let num_values = self.parse_length()?;
+                let mut values = ManualVec::with_cap_in(alloc, num_values).ok_or_else(|| todo!())?;
+                for _ in 0..num_values {
+                    values.push(self.parse_u32()?).unwrap_debug();
+                }
+
+                Element {
+                    ty: RefType::FuncRef,
+                    kind: ElementKind::Active { table, offset: offset as u32 },
                     values: values.leak(),
                 }
             }

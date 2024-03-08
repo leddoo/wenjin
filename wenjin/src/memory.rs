@@ -19,14 +19,14 @@ pub(crate) struct MemoryData {
 const ALIGN: usize = 16;
 
 impl MemoryData {
-    pub fn new(limits: Limits) -> Result<Self, ()> {
+    pub fn new(limits: Limits) -> Result<Self, Error> {
         let mut this = Self {
             limits,
             buffer: NonNull::dangling(),
             size_pages: 0,
         };
 
-        this.grow(limits.min)?;
+        this.grow(limits.min).map_err(|_| Error::OutOfMemory)?;
 
         return Ok(this);
     }
@@ -82,35 +82,35 @@ impl Drop for MemoryData {
 
 
 pub struct Memory<'a> {
-    memory: NonNull<MemoryData>,
+    inner: NonNull<MemoryData>,
     phantom: PhantomData<&'a mut MemoryData>,
 }
 
 impl<'a> Memory<'a> {
     #[inline]
     pub(crate) fn new(memory: &UnsafeCell<MemoryData>) -> Self {
-        Self { memory: NonNull::from(memory).cast(), phantom: PhantomData }
+        Self { inner: NonNull::from(memory).cast(), phantom: PhantomData }
     }
 
     #[inline]
     pub fn size_pages(&self) -> u32 {
-        unsafe { self.memory.as_ref().size_pages }
+        unsafe { self.inner.as_ref().size_pages }
     }
 
     #[inline]
     pub fn size_bytes(&self) -> usize {
-        unsafe { self.memory.as_ref().size_bytes() }
+        unsafe { self.inner.as_ref().size_bytes() }
     }
 
     #[inline]
     pub fn grow(&mut self, by_pages: u32) -> Result<u32, Error> {
-        unsafe { self.memory.as_mut().grow(by_pages) }
-        .map_err(|_| todo!())
+        unsafe { self.inner.as_mut().grow(by_pages) }
+        .map_err(|_| Error::OutOfMemory)
     }
 
     #[inline]
     pub(crate) fn as_mut_ptr(&mut self) -> (*mut u8, usize) {
-        let inner = unsafe { self.memory.as_mut() };
+        let inner = unsafe { self.inner.as_mut() };
         (inner.buffer.as_ptr(), inner.size_bytes())
     }
 }

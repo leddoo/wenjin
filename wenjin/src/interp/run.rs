@@ -1,6 +1,6 @@
 use core::hint::unreachable_unchecked;
 
-use crate::{Error, Memory};
+use crate::{Error, Memory, Table};
 use crate::store::{Store, FuncKind, StackValue, StackFrame};
 
 
@@ -346,11 +346,23 @@ impl Store {
                     }
                 }
 
-                wasm::opcode::CALL => {
-                    let func_idx = state.next_u32();
+                wasm::opcode::CALL | wasm::opcode::CALL_INDIRECT => {
+                    let func_idx = if op == wasm::opcode::CALL {
+                        let func_idx = state.next_u32();
 
-                    let inst = &self.instances[state.instance as usize];
-                    let func_idx = inst.funcs[func_idx as usize];
+                        let inst = &self.instances[state.instance as usize];
+                        inst.funcs[func_idx as usize]
+                    }
+                    else {
+                        let _type_idx = state.next_u32();
+                        let tab_idx = state.next_u32();
+                        let i = state.pop().as_i32() as usize;
+
+                        let inst = &self.instances[state.instance as usize];
+                        let tab_idx = inst.tables[tab_idx as usize];
+                        let tab = Table::new(&self.tables[tab_idx as usize]);
+                        tab.as_slice()[i].id
+                    };
 
                     let func = &self.funcs[func_idx as usize];
                     match &func.kind {

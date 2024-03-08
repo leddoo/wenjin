@@ -1,4 +1,3 @@
-//use core::num::NonZeroU32;
 use core::cell::UnsafeCell;
 use core::ptr::NonNull;
 
@@ -9,6 +8,7 @@ use sti::boks::Box;
 use sti::manual_vec::ManualVec;
 
 use crate::{Error, Value};
+use crate::table::{TableData, Table};
 use crate::memory::{MemoryData, Memory};
 use crate::interp;
 
@@ -32,6 +32,19 @@ pub struct MemoryId { id: u32 }
 pub struct GlobalId { id: u32 }
 
 
+#[derive(Clone, Copy, Debug)]
+pub struct RefValue { pub id: u32 }
+
+impl RefValue {
+    pub const NULL: RefValue = RefValue { id: u32::MAX };
+
+    #[inline(always)]
+    pub fn is_null(self) -> bool {
+        self.id == u32::MAX
+    }
+}
+
+
 pub enum Extern {
     Func(FuncId),
     Table(TableId),
@@ -44,6 +57,7 @@ pub struct Store {
     pub(crate) modules: ManualVec<ModuleData>,
     pub(crate) instances: ManualVec<InstanceData>,
     pub(crate) funcs: ManualVec<FuncData>,
+    pub(crate) tables: ManualVec<Box<UnsafeCell<TableData>>>,
     pub(crate) memories: ManualVec<Box<UnsafeCell<MemoryData>>>,
     pub(crate) thread: ThreadData,
 }
@@ -184,6 +198,7 @@ impl Store {
             modules: ManualVec::new(),
             instances: ManualVec::new(),
             funcs: ManualVec::new(),
+            tables: ManualVec::new(),
             memories: ManualVec::new(),
             thread: ThreadData {
                 stack: ManualVec::new(),
@@ -259,7 +274,7 @@ impl Store {
         let module = self.modules.get(module_id.id as usize).ok_or_else(|| todo!())?;
 
         // @temp
-        let wasm = module.wasm.clone();
+        let wasm = unsafe { core::mem::transmute::<&wasm::Module, &wasm::Module>(&module.wasm) };
 
         let id = InstanceId {
             id: self.instances.len().try_into().map_err(|_| Error::OutOfMemory)?,
@@ -298,11 +313,14 @@ impl Store {
         }
 
 
-        let tables = ManualVec::new();
+        let mut tables = ManualVec::with_cap(wasm.tables.len()).ok_or_else(|| Error::OutOfMemory)?;
+        for tab in wasm.tables {
+            tables.push(self.new_table(tab.ty, tab.limits)?.id).unwrap_debug();
+        }
 
 
-        let mut memories = ManualVec::with_cap(module.wasm.memories.len()).ok_or_else(|| Error::OutOfMemory)?;
-        for mem in module.wasm.memories {
+        let mut memories = ManualVec::with_cap(wasm.memories.len()).ok_or_else(|| Error::OutOfMemory)?;
+        for mem in wasm.memories {
             memories.push(self.new_memory(mem.limits)?.id).unwrap_debug();
         }
 
@@ -310,10 +328,43 @@ impl Store {
         let globals = ManualVec::new();
 
 
+        for elem in wasm.elements {
+            match elem.kind {
+                wasm::ElementKind::Passive => (),
+
+                wasm::ElementKind::Active { table, offset } => {
+                    let tab_id = tables[table as usize];
+                    let mut tab = Table::new(&self.tables[tab_id as usize]);
+                    let values = tab.as_mut_slice();
+
+                    let Some(end) = (offset as usize).checked_add(elem.values.len()) else {
+                        todo!()
+                    };
+                    if end > values.len() {
+                        todo!()
+                    }
+
+                    for i in 0..elem.values.len() {
+                        match elem.ty {
+                            wasm::RefType::FuncRef => {
+                                let func_idx = funcs[elem.values[i] as usize];
+                                values[offset as usize + i] = RefValue { id: func_idx };
+                            }
+
+                            wasm::RefType::ExternRef => todo!(),
+                        }
+                    }
+                }
+
+                wasm::ElementKind::Declarative => (),
+            }
+        }
+
         for data in wasm.datas {
             let bytes = data.values;
             match data.kind {
                 wasm::DataKind::Passive => (),
+
                 wasm::DataKind::Active { mem, offset } => {
                     let mem_id = memories[mem as usize];
                     let mut mem = Memory::new(&self.memories[mem_id as usize]);
@@ -426,17 +477,25 @@ impl Store {
         }
     }
 
+    pub fn new_table(&mut self, ty: wasm::RefType, limits: wasm::Limits) -> Result<TableId, Error> {
+        let id = TableId {
+            id: self.tables.len().try_into().map_err(|_| Error::OutOfMemory)?,
+        };
+
+        let table = TableData::new(ty, limits, RefValue::NULL)?;
+        let table = Box::try_new_in(GlobalAlloc, UnsafeCell::new(table)).ok_or_else(|| Error::OutOfMemory)?;
+        self.tables.push_or_alloc(table).map_err(|_| Error::OutOfMemory)?;
+        return Ok(id);
+    }
+
     pub fn new_memory(&mut self, limits: wasm::Limits) -> Result<MemoryId, Error> {
         let id = MemoryId {
             id: self.memories.len().try_into().map_err(|_| Error::OutOfMemory)?,
         };
 
-        let memory = MemoryData::new(limits).map_err(|_| Error::OutOfMemory)?;
-
+        let memory = MemoryData::new(limits)?;
         let memory = Box::try_new_in(GlobalAlloc, UnsafeCell::new(memory)).ok_or_else(|| Error::OutOfMemory)?;
-
         self.memories.push_or_alloc(memory).map_err(|_| Error::OutOfMemory)?;
-
         return Ok(id);
     }
 
