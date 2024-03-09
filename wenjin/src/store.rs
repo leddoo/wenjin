@@ -1,5 +1,6 @@
 use core::cell::UnsafeCell;
 use core::ptr::NonNull;
+use core::marker::PhantomData;
 
 use sti::traits::UnwrapDebug;
 use sti::alloc::GlobalAlloc;
@@ -7,6 +8,7 @@ use sti::arena::Arena;
 use sti::boks::Box;
 use sti::manual_vec::ManualVec;
 
+use crate::typed::WasmTypes;
 use crate::{Error, Value};
 use crate::table::{TableData, Table};
 use crate::memory::{MemoryData, Memory};
@@ -22,6 +24,9 @@ pub struct InstanceId { id: u32 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct FuncId { id: u32 }
+
+#[derive(Clone, Copy, Debug)]
+pub struct TypedFuncId<P, R> { id: u32, phantom: PhantomData<fn(P) -> R> }
 
 #[derive(Clone, Copy, Debug)]
 pub struct TableId { id: u32 }
@@ -66,6 +71,7 @@ pub struct Store {
 
 
 pub(crate) struct ModuleData {
+    #[allow(dead_code)]
     pub alloc: Arena,
     pub wasm: wasm::Module<'static>,
     pub funcs: ManualVec<ModuleFunc>,
@@ -111,7 +117,7 @@ pub(crate) struct InterpFunc {
 
 #[derive(Clone, Copy)]
 #[repr(align(8))]
-pub(crate) struct StackValue {
+pub struct StackValue {
     bytes: [u8; 8],
 }
 
@@ -444,7 +450,21 @@ impl Store {
         return Ok(func);
     }
 
-    pub fn call_dyn(&mut self, func_id: FuncId, args: &[Value], rets: &mut [Value]) -> Result<(), Error> {
+    pub fn check_func_type<P: WasmTypes, R: WasmTypes>(&self, func: FuncId) -> Result<TypedFuncId<P, R>, Error> {
+        let data = &self.funcs[func.id as usize];
+        if data.ty.params != P::WASM_TYPES || data.ty.rets != R::WASM_TYPES {
+            todo!()
+        }
+
+        Ok(TypedFuncId { id: func.id, phantom: PhantomData })
+    }
+
+    pub fn get_export_func<P: WasmTypes, R: WasmTypes>(&self, instance_id: InstanceId, name: &str) -> Result<TypedFuncId<P, R>, Error> {
+        let func = self.get_export_func_dyn(instance_id, name)?;
+        self.check_func_type(func)
+    }
+
+    pub fn call_dyn<'r>(&mut self, func_id: FuncId, args: &[Value], rets: &'r mut [Value]) -> Result<&'r mut [Value], Error> {
         let func = self.funcs.get(func_id.id as usize).ok_or_else(|| todo!())?;
 
         // @todo: this may not be safe in the future.
@@ -484,7 +504,34 @@ impl Store {
         }
         self.thread.stack.truncate(bp);
 
-        return Ok(());
+        return Ok(rets);
+    }
+
+    // @todo: debug check types.
+    pub fn call<P: WasmTypes, R: WasmTypes>(&mut self, func_id: TypedFuncId<P, R>, args: P) -> Result<R, Error> {
+        let func = self.funcs.get(func_id.id as usize).ok_or_else(|| todo!())?;
+        debug_assert_eq!(func.ty.params, P::WASM_TYPES);
+        debug_assert_eq!(func.ty.rets,   R::WASM_TYPES);
+
+        // push args onto stack.
+        let stack = &mut self.thread.stack;
+        let bp = stack.len();
+        stack.reserve_extra(P::WASM_TYPES.len()).map_err(|_| Error::OutOfMemory)?;
+        unsafe {
+            args.to_stack_values(stack.as_mut_ptr().add(bp));
+            stack.set_len(bp + P::WASM_TYPES.len());
+        }
+
+        self.run_func(func_id.id)?;
+
+        let stack = &mut self.thread.stack;
+        debug_assert_eq!(stack.len(), bp + R::WASM_TYPES.len());
+
+        // pop results from stack.
+        let result = unsafe { R::from_stack_values(stack.as_mut_ptr().add(bp)) };
+        stack.truncate(bp);
+
+        return Ok(result);
     }
 
     fn run_func(&mut self, id: u32) -> Result<(), Error> {

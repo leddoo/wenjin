@@ -7,29 +7,30 @@ def gen_tuple(n: int):
     names      = ", ".join(map(lambda i: f"a{i}", range(n)))
 
     # `impl WasmTypes`
-    result += f"impl<{type_decls}> WasmTypes for ({types}) {{\n"
+    result += f"    impl<{type_decls}> WasmTypes for ({types}) {{\n"
 
     # `const WASM_TYPES`
-    result += "    const WASM_TYPES: &'static [wasm::ValueType] = &["
+    result += "        const WASM_TYPES: &'static [wasm::ValueType] = &["
     result += ", ".join(map(lambda i: f"T{i}::WASM_TYPE", range(n)))
     result += "];\n\n"
 
     # `fn to_stack_values`
-    result += "    #[inline(always)]\n"
-    result += "    fn to_stack_values(self, dst: *mut StackValue) { unsafe {\n"
+    result += "        #[inline(always)]\n"
+    result += "        unsafe fn to_stack_values(self, dst: *mut StackValue) { unsafe {\n"
     for i in range(n):
-        result += f"        dst.add({i}).write(self.{i}.to_stack_value());\n"
-    result += "    }}\n\n"
+        result += f"            dst.add({i}).write(self.{i}.to_stack_value());\n"
+    result += "        }}\n\n"
 
     # `fn from_stack_values`
-    result += "    #[inline(always)]\n"
-    result += "    fn from_stack_values(src: *const StackValue) -> Self { unsafe { (\n"
+    result += "        #[inline(always)]\n"
+    result += "        unsafe fn from_stack_values(src: *const StackValue) -> Self { unsafe { (\n"
     for i in range(n):
-        result += f"        T{i}::from_stack_value(src.add({i}).read()),\n"
-    result += "    )}}\n"
+        result += f"            T{i}::from_stack_value(src.add({i}).read()),\n"
+    result += "        )}}\n"
 
-    result += "}\n\n"
+    result += "    }\n\n"
 
+    """
 
     # `impl HostFunc<Plain>`
     result += f"unsafe impl<{type_decls}, R: WasmResult, F: Fn({types}) -> R + 'static> HostFunc<({types}), R::Types, HostFuncKindPlain> for F {{\n"
@@ -53,6 +54,8 @@ def gen_tuple(n: int):
     result +=  "        Ok(())\n"
     result +=  "    }\n"
     result +=  "}\n\n"
+
+    """
 
     print(result)
 

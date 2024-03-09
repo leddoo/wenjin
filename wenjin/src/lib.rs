@@ -2,6 +2,7 @@ mod value;
 mod table;
 mod memory;
 mod global;
+mod typed;
 mod store;
 mod interp;
 

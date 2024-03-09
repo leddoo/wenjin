@@ -1,7 +1,6 @@
 
 - todo:
     - host funcs.
-    - wasm types & typed func.
     - rest of the owl:
         - clone the wasm (cause we have dangling refs).
         - validate non-code sections (incl elem, data).
