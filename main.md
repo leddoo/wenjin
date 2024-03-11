@@ -1,12 +1,12 @@
 
 - todo:
-    - imports.
-    - interp to host calls.
+    - indirectfn.
     - rest of the owl:
         - clone the wasm (cause we have dangling refs).
         - validate non-code sections (incl elem, data).
         - wasm ptr.
         - ctype.
+        - non-func imports.
         - pass remaining tests.
     - debugging.
     - mutable instances.

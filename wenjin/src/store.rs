@@ -57,6 +57,7 @@ impl RefValue {
 }
 
 
+#[derive(Clone, Copy, Debug)]
 pub enum Extern {
     Func(FuncId),
     Table(TableId),
@@ -309,15 +310,39 @@ impl Store {
             id: self.instances.len().try_into().map_err(|_| Error::OutOfMemory)?,
         };
 
-        if imports.len() > 0 || module.wasm.imports.imports.len() > 0 {
+        if imports.len() > wasm.imports.imports.len() {
             todo!()
         }
 
+        let lookup_import = |module, name| {
+            for (m, n, import) in imports.iter().copied() {
+                if m == module && n == name {
+                    return Ok(import);
+                }
+            }
+            todo!();
+        };
 
-        let mut funcs = ManualVec::with_cap(module.funcs.len()).ok_or_else(|| Error::OutOfMemory)?;
-        self.funcs.reserve_extra(module.funcs.len()).map_err(|_| Error::OutOfMemory)?;
-        if u32::try_from(self.funcs.len() + module.funcs.len()).is_err() {
+
+        let num_funcs = wasm.imports.funcs.len() + module.funcs.len();
+        let mut funcs = ManualVec::with_cap(num_funcs).ok_or_else(|| Error::OutOfMemory)?;
+        self.funcs.reserve_extra(num_funcs).map_err(|_| Error::OutOfMemory)?;
+        if u32::try_from(self.funcs.len() + num_funcs).is_err() {
             return Err(Error::OutOfMemory);
+        }
+        for import in wasm.imports.imports {
+            let wasm::ImportKind::Func(ty) = import.kind else { continue };
+            let ty = wasm.types[ty as usize];
+
+            let Extern::Func(func_id) = lookup_import(import.module, import.name)? else {
+                todo!()
+            };
+            let func = &self.funcs[func_id.id as usize];
+            if func.ty != ty {
+                todo!()
+            }
+
+            funcs.push(func_id.id).unwrap_debug();
         }
         for func in module.funcs.iter() {
             let code = func.code.inner().as_ptr() as *mut u8;
@@ -431,6 +456,7 @@ impl Store {
             }
         }
 
+        debug_assert_eq!(imports.len(), wasm.imports.imports.len());
 
         self.instances.push_or_alloc(InstanceData {
             module: module_id.id,
@@ -565,7 +591,7 @@ impl Store {
             FuncKind::Host(f) => {
                 debug_assert!(stack.len() >= f.num_params as usize);
                 debug_assert!(stack.cap() >= stack.len() - f.num_params as usize + f.num_rets as usize);
-                (f.call)(&f.data as *const _ as *const u8, self)
+                (f.call)(&*f.data as *const _ as *const u8, self)
             }
         }
     }

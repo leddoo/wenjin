@@ -452,7 +452,51 @@ impl Store {
                             };
                         }
 
-                        FuncKind::Host(_) => todo!(),
+                        FuncKind::Host(f) => unsafe {
+                            let stack = &mut self.thread.stack;
+
+                            let bp = state.bp.offset_from(stack.as_ptr()) as usize;
+                            let sp = state.sp.offset_from(stack.as_ptr()) as usize;
+                            let locals_end = state.locals_end.offset_from(stack.as_ptr()) as usize;
+                            let stack_frame_end = state.stack_frame_end.offset_from(stack.as_ptr()) as usize;
+                            stack.set_len(sp);
+
+                            let stack_required = sp - f.num_params as usize + f.num_rets as usize;
+                            if stack.reserve(stack_required).is_err() {
+                                todo!()
+                            }
+
+                            // don't need a stack frame.
+                            // recursive `run_interp` calls handle that.
+
+                            if (f.call)(&*f.data as *const _ as *const u8, self).is_err() {
+                                todo!()
+                            }
+
+                            let mut memory = state.memory;
+                            let mut memory_size = state.memory_size;
+                            if let Some(mem) = state.memory_data.as_mut() {
+                                (memory, memory_size) = mem.as_mut_ptr();
+                            }
+
+                            let stack = &mut self.thread.stack;
+                            let stack_ptr = stack.as_mut_ptr();
+                            state = State {
+                                instance: state.instance,
+                                func: state.func,
+                                pc: state.pc,
+                                code_begin: state.code_begin,
+                                code_end: state.code_end,
+                                bp: stack_ptr.add(bp),
+                                sp: stack_ptr.add(stack.len()),
+                                locals_end: stack_ptr.add(locals_end),
+                                stack_frame_end: stack_ptr.add(stack_frame_end),
+                                stack_alloc_end: stack_ptr.add(stack.cap()),
+                                memory_data: state.memory_data,
+                                memory,
+                                memory_size,
+                            };
+                        }
                     }
                 }
 
