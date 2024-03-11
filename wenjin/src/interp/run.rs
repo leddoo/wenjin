@@ -452,7 +452,7 @@ impl Store {
                             };
                         }
 
-                        FuncKind::Temp => unreachable!(),
+                        FuncKind::Host(_) => todo!(),
                     }
                 }
 

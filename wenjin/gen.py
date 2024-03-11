@@ -1,10 +1,11 @@
 
-def gen_tuple(n: int):
+def gen(n: int):
     result = ""
 
     type_decls = ", ".join(map(lambda i: f"T{i}: WasmType", range(n)))
     types      = ", ".join(map(lambda i: f"T{i}", range(n))) + ","
     names      = ", ".join(map(lambda i: f"a{i}", range(n)))
+
 
     # `impl WasmTypes`
     result += f"    impl<{type_decls}> WasmTypes for ({types}) {{\n"
@@ -30,37 +31,41 @@ def gen_tuple(n: int):
 
     result += "    }\n\n"
 
-    """
 
-    # `impl HostFunc<Plain>`
-    result += f"unsafe impl<{type_decls}, R: WasmResult, F: Fn({types}) -> R + 'static> HostFunc<({types}), R::Types, HostFuncKindPlain> for F {{\n"
-    result +=  "    #[inline]\n"
-    result +=  "    fn call(&self, _: (), stack: *mut StackValue) -> Result<(), ()> {\n"
-    result += f"        let ({names},) = WasmTypes::from_stack_values(stack);\n"
-    result += f"        let r = (self)({names}).to_result()?;\n"
-    result +=  "        r.to_stack_values(stack);\n"
-    result +=  "        Ok(())\n"
-    result +=  "    }\n"
-    result +=  "}\n\n"
+    # `impl HostFunc for Fn(Ts) -> Rs`
+    result += f"    unsafe impl<{type_decls}, R: WasmResult, F: Fn({types}) -> R + 'static> HostFunc<({types}), R::Types, false> for F {{\n"
+    result +=  "        #[inline]\n"
+    result +=  "        fn call(&self, store: &mut Store) -> Result<(), Error> {\n"
+    result +=  "            let stack = &mut store.thread.stack;\n"
+    result += f"            unsafe {{ stack.set_len(stack.len() - {n}) }};\n"
+    result += f"            let ({names},) = unsafe {{ WasmTypes::from_stack_values(stack.as_mut_ptr().add(stack.len())) }};\n"
+    result += f"            let r = (self)({names}).to_result()?;\n"
+    result += f"            let stack = &mut store.thread.stack;\n"
+    result +=  "            unsafe { r.to_stack_values(stack.as_mut_ptr().add(stack.len())) };\n"
+    result +=  "            unsafe { stack.set_len(stack.len() + R::Types::WASM_TYPES.len()) };\n"
+    result +=  "            Ok(())\n"
+    result +=  "        }\n"
+    result +=  "    }\n\n"
 
-
-    # `impl HostFunc<WithMemory>`
-    result += f"unsafe impl<{type_decls}, R: WasmResult, F: Fn(&mut MemoryView, {types}) -> R + 'static> HostFunc<({types}), R::Types, HostFuncKindWithMemory> for F {{\n"
-    result +=  "    #[inline]\n"
-    result +=  "    fn call(&self, mem: *mut MemoryView<'static>, stack: *mut StackValue) -> Result<(), ()> {\n"
-    result += f"        let ({names},) = WasmTypes::from_stack_values(stack);\n"
-    result += f"        let r = (self)(unsafe {{ &mut *mem }}, {names}).to_result()?;\n"
-    result +=  "        r.to_stack_values(stack);\n"
-    result +=  "        Ok(())\n"
-    result +=  "    }\n"
-    result +=  "}\n\n"
-
-    """
+    # `impl HostFunc for Fn(&mut store, Ts) -> Rs`
+    result += f"    unsafe impl<{type_decls}, R: WasmResult, F: Fn(&mut Store, {types}) -> R + 'static> HostFunc<({types}), R::Types, true> for F {{\n"
+    result +=  "        #[inline]\n"
+    result +=  "        fn call(&self, store: &mut Store) -> Result<(), Error> {\n"
+    result +=  "            let stack = &mut store.thread.stack;\n"
+    result += f"            unsafe {{ stack.set_len(stack.len() - {n}) }};\n"
+    result += f"            let ({names},) = unsafe {{ WasmTypes::from_stack_values(stack.as_mut_ptr().add(stack.len())) }};\n"
+    result += f"            let r = (self)(store, {names}).to_result()?;\n"
+    result += f"            let stack = &mut store.thread.stack;\n"
+    result +=  "            unsafe { r.to_stack_values(stack.as_mut_ptr().add(stack.len())) };\n"
+    result +=  "            unsafe { stack.set_len(stack.len() + R::Types::WASM_TYPES.len()) };\n"
+    result +=  "            Ok(())\n"
+    result +=  "        }\n"
+    result +=  "    }\n\n"
 
     print(result)
 
 
 
 for i in range(1, 16 + 1):
-    gen_tuple(i)
+    gen(i)
 

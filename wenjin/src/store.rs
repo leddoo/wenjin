@@ -1,6 +1,7 @@
 use core::cell::UnsafeCell;
 use core::ptr::NonNull;
 use core::marker::PhantomData;
+use core::any::Any;
 
 use sti::traits::UnwrapDebug;
 use sti::alloc::GlobalAlloc;
@@ -8,11 +9,11 @@ use sti::arena::Arena;
 use sti::boks::Box;
 use sti::manual_vec::ManualVec;
 
-use crate::typed::WasmTypes;
 use crate::{Error, Value};
 use crate::table::{TableData, Table};
 use crate::memory::{MemoryData, Memory};
 use crate::global::{GlobalData, Global};
+use crate::typed::{WasmTypes, HostFunc};
 use crate::interp;
 
 
@@ -27,6 +28,11 @@ pub struct FuncId { id: u32 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct TypedFuncId<P, R> { id: u32, phantom: PhantomData<fn(P) -> R> }
+
+impl<P, R> TypedFuncId<P, R> {
+    #[inline]
+    fn func(self) -> FuncId { FuncId { id: self.id } }
+}
 
 #[derive(Clone, Copy, Debug)]
 pub struct TableId { id: u32 }
@@ -57,6 +63,12 @@ pub enum Extern {
     Memory(MemoryId),
     Global(GlobalId),
 }
+
+impl From<FuncId> for Extern { #[inline] fn from(value: FuncId) -> Self { Self::Func(value) } }
+impl<P, R> From<TypedFuncId<P, R>> for Extern { #[inline] fn from(value: TypedFuncId<P, R>) -> Self { Self::Func(value.func()) } }
+impl From<TableId> for Extern { #[inline] fn from(value: TableId) -> Self { Self::Table(value) } }
+impl From<MemoryId> for Extern { #[inline] fn from(value: MemoryId) -> Self { Self::Memory(value) } }
+impl From<GlobalId> for Extern { #[inline] fn from(value: GlobalId) -> Self { Self::Global(value) } }
 
 
 pub struct Store {
@@ -101,10 +113,9 @@ pub(crate) struct FuncData {
 
 pub(crate) enum FuncKind {
     Interp(InterpFunc),
-    Temp,
+    Host(HostFuncData),
 }
 
-#[derive(Debug)]
 pub(crate) struct InterpFunc {
     pub instance: u32,
     pub code: *mut u8,
@@ -112,6 +123,13 @@ pub(crate) struct InterpFunc {
     pub stack_size: u32,
     pub num_params: u32,
     pub num_locals: u32,
+}
+
+pub(crate) struct HostFuncData {
+    pub data: Box<dyn Any>,
+    pub call: fn(*const u8, &mut Store) -> Result<(), Error>,
+    pub num_params: u8,
+    pub num_rets: u8,
 }
 
 
@@ -489,7 +507,7 @@ impl Store {
 
         // push args onto stack.
         let bp = self.thread.stack.len();
-        self.thread.stack.reserve_extra(args.len()).map_err(|_| Error::OutOfMemory)?;
+        self.thread.stack.reserve_extra(args.len().max(rets.len())).map_err(|_| Error::OutOfMemory)?;
         for arg in args {
             self.thread.stack.push(StackValue::from_value(*arg)).unwrap_debug();
         }
@@ -516,7 +534,7 @@ impl Store {
         // push args onto stack.
         let stack = &mut self.thread.stack;
         let bp = stack.len();
-        stack.reserve_extra(P::WASM_TYPES.len()).map_err(|_| Error::OutOfMemory)?;
+        stack.reserve_extra(P::WASM_TYPES.len().max(R::WASM_TYPES.len())).map_err(|_| Error::OutOfMemory)?;
         unsafe {
             args.to_stack_values(stack.as_mut_ptr().add(bp));
             stack.set_len(bp + P::WASM_TYPES.len());
@@ -535,13 +553,50 @@ impl Store {
     }
 
     fn run_func(&mut self, id: u32) -> Result<(), Error> {
+        let stack = &mut self.thread.stack;
+
         let func = &self.funcs[id as usize];
-
         match &func.kind {
-            FuncKind::Interp(_) => self.run_interp(id),
+            FuncKind::Interp(f) => {
+                debug_assert!(stack.len() >= f.num_params as usize);
+                self.run_interp(id)
+            }
 
-            FuncKind::Temp => unreachable!(),
+            FuncKind::Host(f) => {
+                debug_assert!(stack.len() >= f.num_params as usize);
+                debug_assert!(stack.cap() >= stack.len() - f.num_params as usize + f.num_rets as usize);
+                (f.call)(&f.data as *const _ as *const u8, self)
+            }
         }
+    }
+
+    pub fn new_host_func<P: WasmTypes, R: WasmTypes, const STORE: bool, H: HostFunc<P, R, STORE>>
+        (&mut self, f: H) -> Result<TypedFuncId<P, R>, Error>
+    {
+        let id = TypedFuncId {
+            id: self.funcs.len().try_into().map_err(|_| Error::OutOfMemory)?,
+            phantom: PhantomData,
+        };
+
+        self.funcs.push_or_alloc(FuncData {
+            ty: wasm::FuncType { params: P::WASM_TYPES, rets: R::WASM_TYPES },
+            kind: FuncKind::Host(
+                HostFuncData {
+                    data: {
+                        let data = Box::try_new_in(GlobalAlloc, f).ok_or(Error::OutOfMemory)?;
+                        let (data, alloc) = data.into_raw_parts();
+                        unsafe { Box::from_raw_parts(data as NonNull<dyn Any>, alloc) }
+                    },
+                    call: |this, store| {
+                        H::call(unsafe { &*(this as *const H) }, store)
+                    },
+                    // have impls for tuples up to len 16.
+                    num_params: P::WASM_TYPES.len().try_into().unwrap(),
+                    num_rets: R::WASM_TYPES.len().try_into().unwrap(),
+                })
+        }).map_err(|_| Error::OutOfMemory)?;
+
+        return Ok(id);
     }
 
     pub fn new_table(&mut self, ty: wasm::RefType, limits: wasm::Limits) -> Result<TableId, Error> {

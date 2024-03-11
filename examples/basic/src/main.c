@@ -1,8 +1,5 @@
 void __wasm_call_ctors();
-
-void _start() {
-    __wasm_call_ctors();
-}
+void _start() { __wasm_call_ctors(); }
 
 
 int add(int a, int b) {
