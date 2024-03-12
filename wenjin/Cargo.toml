@@ -7,3 +7,6 @@ edition = "2021"
 sti = { git = "https://github.com/leddoo/sti" }
 wasm = { path = "../wenjin-wasm", package = "wenjin-wasm" }
 
+[dev-dependencies]
+wenjin-derive = { path = "../wenjin-derive" }
+

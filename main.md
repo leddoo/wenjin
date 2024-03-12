@@ -1,8 +1,6 @@
 
 - todo:
-    - memory api.
-        - wasm ptr.
-        - ctype.
+    - malloc test.
     - global api.
         - `caller_global(name)`?
     - rest of the owl:
@@ -24,6 +22,7 @@
     - static assert little endian for ctype?
     - test multi-level func vars, occurs check.
     - test `caller_memory` `CallerNoMemory` error.
+    - host fn panics.
 
 - sti:
     - `reserve_extra` retry with exact value on failure?

@@ -48,25 +48,22 @@ pub fn derive_ctype(item: TokenStream) -> TokenStream {
             let prev_end = 0;
         });
 
-        for (i, field) in fields.iter().enumerate() {
-            let name = match &field.ident {
-                Some(ident) => syn::Member::Named(ident.clone()),
-                None        => syn::Member::Unnamed(i.into()),
-            };
-
+        for field in fields.iter() {
+            let ty = &field.ty;
             result.extend(quote! {
-                let offset = (&self.#name as *const _ as usize) - (self as *const _ as usize);
-                bytes.para_slice_mut(prev_end..offset).fill(0);
+                let offset = ::wenjin::ceil_to_multiple_pow2(prev_end, ::core::mem::align_of::<#ty>());
+                unsafe { bytes.get_mut(prev_end..offset).unwrap_unchecked().fill(0) };
 
-                let size = ::core::mem::size_of_val(&self.#name);
+                let size = ::core::mem::size_of::<#ty>();
                 let prev_end = offset + size;
-                self.#name.clear_padding(bytes.para_slice_mut(offset..prev_end));
+                #ty::clear_padding(unsafe { bytes.get_mut(offset..prev_end).unwrap_unchecked() });
             });
         }
 
         result.extend(quote! {
-            let offset = ::core::mem::size_of::<Self>();
-            bytes.para_slice_mut(prev_end..offset).fill(0);
+            let offset = ::wenjin::ceil_to_multiple_pow2(prev_end, ::core::mem::align_of::<Self>());
+            debug_assert_eq!(offset, ::core::mem::size_of::<Self>());
+            unsafe { bytes.get_mut(prev_end..offset).unwrap_unchecked().fill(0) };
         });
 
         result
@@ -76,9 +73,8 @@ pub fn derive_ctype(item: TokenStream) -> TokenStream {
     let result = quote! {
         unsafe impl #impl_generics ::wenjin::CType for #ident #ty_generics #where_clause {
             #[inline(always)]
-            unsafe fn clear_padding(&self, mut bytes: ::wenjin::ParaSliceMut<u8>) {
-                unsafe { bytes.assume_len(::core::mem::size_of::<Self>()) }
-
+            unsafe fn clear_padding(bytes: &mut [u8]) {
+                debug_assert_eq!(bytes.len(), ::core::mem::size_of::<Self>());
                 #clear_padding
             }
         }
