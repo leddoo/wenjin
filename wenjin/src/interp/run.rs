@@ -354,7 +354,7 @@ impl Store {
                 }
 
                 wasm::opcode::CALL | wasm::opcode::CALL_INDIRECT => {
-                    let func_idx = if op == wasm::opcode::CALL {
+                    let mut func_id = if op == wasm::opcode::CALL {
                         let func_idx = state.next_u32();
 
                         let inst = &self.instances[state.instance as usize];
@@ -371,7 +371,12 @@ impl Store {
                         tab.as_slice()[i].id
                     };
 
-                    let func = &self.funcs[func_idx as usize];
+                    let mut func = &self.funcs[func_id as usize];
+                    while let FuncKind::Var(id) = func.kind {
+                        let Some(id) = id else { todo!() };
+                        func_id = id;
+                        func = &self.funcs[id as usize];
+                    }
                     match &func.kind {
                         FuncKind::Interp(f) => unsafe {
                             let bp_offset = state.sp.offset_from(state.bp) as u32 - f.num_params;
@@ -437,7 +442,7 @@ impl Store {
 
                             state = State {
                                 instance: f.instance,
-                                func: func_idx,
+                                func: func_id,
                                 pc: f.code,
                                 code_begin: f.code,
                                 code_end: f.code_end,
@@ -497,6 +502,8 @@ impl Store {
                                 memory_size,
                             };
                         }
+
+                        FuncKind::Var(_) => unreachable!(),
                     }
                 }
 

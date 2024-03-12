@@ -12,8 +12,7 @@ fn host_func() {
     assert_eq!(store.call(add, (33, 36)).unwrap(), 69);
 
 
-    let fib_guest: Option<TypedFuncId<i32, i32>> = None;
-    let fib_guest = std::rc::Rc::new(core::cell::Cell::new(fib_guest));
+    let fib_guest = store.new_func_var::<i32, i32>().unwrap();
 
     let fib_host = store.new_host_func({ let fib_guest = fib_guest.clone();
         move |store: &mut Store, n: i32| {
@@ -21,7 +20,6 @@ fn host_func() {
                 n
             }
             else {
-                let fib_guest = fib_guest.get().unwrap();
                 store.call(fib_guest, n-2)? + store.call(fib_guest, n-1)?
             })
         }
@@ -30,8 +28,7 @@ fn host_func() {
     let module = store.new_module(include_bytes!("host_func.wasm")).unwrap();
     let inst = store.new_instance(module, &[("host", "fib_host", fib_host.into())]).unwrap();
 
-    fib_guest.set(Some(store.get_export_func(inst, "fib").unwrap()));
-    let fib_guest = fib_guest.get().unwrap();
+    store.assign_func_var(fib_guest, store.get_export_func(inst, "fib").unwrap()).unwrap();
 
     for i in 0..10 {
         let result = {

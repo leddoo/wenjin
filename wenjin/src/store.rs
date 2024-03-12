@@ -115,6 +115,7 @@ pub(crate) struct FuncData {
 pub(crate) enum FuncKind {
     Interp(InterpFunc),
     Host(HostFuncData),
+    Var(Option<u32>),
 }
 
 pub(crate) struct InterpFunc {
@@ -581,7 +582,13 @@ impl Store {
     fn run_func(&mut self, id: u32) -> Result<(), Error> {
         let stack = &mut self.thread.stack;
 
-        let func = &self.funcs[id as usize];
+        let mut id = id;
+        let mut func = &self.funcs[id as usize];
+        while let FuncKind::Var(ref_id) = func.kind {
+            let Some(ref_id) = ref_id else { todo!() };
+            id = ref_id;
+            func = &self.funcs[ref_id as usize];
+        }
         match &func.kind {
             FuncKind::Interp(f) => {
                 debug_assert!(stack.len() >= f.num_params as usize);
@@ -593,6 +600,8 @@ impl Store {
                 debug_assert!(stack.cap() >= stack.len() - f.num_params as usize + f.num_rets as usize);
                 (f.call)(&*f.data as *const _ as *const u8, self)
             }
+
+            FuncKind::Var(_) => unreachable!()
         }
     }
 
@@ -623,6 +632,39 @@ impl Store {
         }).map_err(|_| Error::OutOfMemory)?;
 
         return Ok(id);
+    }
+
+    pub fn new_func_var<P: WasmTypes, R: WasmTypes>(&mut self) -> Result<TypedFuncId<P, R>, Error> {
+        let id = TypedFuncId {
+            id: self.funcs.len().try_into().map_err(|_| Error::OutOfMemory)?,
+            phantom: PhantomData,
+        };
+
+        self.funcs.push_or_alloc(FuncData {
+            ty: wasm::FuncType { params: P::WASM_TYPES, rets: R::WASM_TYPES },
+            kind: FuncKind::Var(None),
+        }).map_err(|_| Error::OutOfMemory)?;
+
+        return Ok(id);
+    }
+
+    pub fn assign_func_var<P: WasmTypes, R: WasmTypes>(&mut self, var: TypedFuncId<P, R>, value: TypedFuncId<P, R>) -> Result<(), Error> {
+        let Some(mut v) = self.funcs.get(value.id as usize) else { todo!() };
+        debug_assert!(v.ty.params == P::WASM_TYPES && v.ty.rets == R::WASM_TYPES);
+        // occurs check.
+        while let FuncKind::Var(Some(id)) = v.kind {
+            if id == var.id {
+                todo!()
+            }
+            v = &self.funcs[id as usize];
+        }
+
+        let Some(var) = self.funcs.get_mut(var.id as usize) else { todo!() };
+        debug_assert!(var.ty.params == P::WASM_TYPES && var.ty.rets == R::WASM_TYPES);
+        let FuncKind::Var(id) = &mut var.kind else { todo!() };
+        *id = Some(value.id);
+
+        return Ok(());
     }
 
     pub fn new_table(&mut self, ty: wasm::RefType, limits: wasm::Limits) -> Result<TableId, Error> {
