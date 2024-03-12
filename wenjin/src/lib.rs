@@ -7,12 +7,14 @@ mod store;
 mod interp;
 
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {
     OutOfMemory,
     InvalidHandle,
     Unreachable,
     Unimplemented,
+    CallerNotWasm,
+    CallerNoMemory,
 }
 
 

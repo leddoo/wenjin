@@ -198,34 +198,6 @@ mod generated {
         )}}
     }
 
-    unsafe impl<T0: WasmType, R: WasmResult, F: Fn(T0,) -> R + 'static> HostFunc<(T0,), R::Types, false> for F {
-        #[inline]
-        fn call(&self, store: &mut Store) -> Result<(), Error> {
-            let stack = &mut store.thread.stack;
-            unsafe { stack.set_len(stack.len() - 1) };
-            let (a0,) = unsafe { WasmTypes::from_stack_values(stack.as_mut_ptr().add(stack.len())) };
-            let r = (self)(a0).to_result()?;
-            let stack = &mut store.thread.stack;
-            unsafe { r.to_stack_values(stack.as_mut_ptr().add(stack.len())) };
-            unsafe { stack.set_len(stack.len() + R::Types::WASM_TYPES.len()) };
-            Ok(())
-        }
-    }
-
-    unsafe impl<T0: WasmType, R: WasmResult, F: Fn(&mut Store, T0,) -> R + 'static> HostFunc<(T0,), R::Types, true> for F {
-        #[inline]
-        fn call(&self, store: &mut Store) -> Result<(), Error> {
-            let stack = &mut store.thread.stack;
-            unsafe { stack.set_len(stack.len() - 1) };
-            let (a0,) = unsafe { WasmTypes::from_stack_values(stack.as_mut_ptr().add(stack.len())) };
-            let r = (self)(store, a0).to_result()?;
-            let stack = &mut store.thread.stack;
-            unsafe { r.to_stack_values(stack.as_mut_ptr().add(stack.len())) };
-            unsafe { stack.set_len(stack.len() + R::Types::WASM_TYPES.len()) };
-            Ok(())
-        }
-    }
-
 
     impl<T0: WasmType, T1: WasmType> WasmTypes for (T0, T1,) {
         const WASM_TYPES: &'static [wasm::ValueType] = &[T0::WASM_TYPE, T1::WASM_TYPE];

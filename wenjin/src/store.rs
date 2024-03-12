@@ -17,16 +17,16 @@ use crate::typed::{WasmTypes, HostFunc};
 use crate::interp;
 
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ModuleId { id: u32 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct InstanceId { id: u32 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FuncId { id: u32 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TypedFuncId<P, R> { id: u32, phantom: PhantomData<fn(P) -> R> }
 
 impl<P, R> TypedFuncId<P, R> {
@@ -34,13 +34,13 @@ impl<P, R> TypedFuncId<P, R> {
     fn func(self) -> FuncId { FuncId { id: self.id } }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TableId { id: u32 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MemoryId { id: u32 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GlobalId { id: u32 }
 
 
@@ -210,6 +210,7 @@ impl StackValue {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct StackFrame {
     pub instance: u32,
     pub func: u32,
@@ -704,6 +705,21 @@ impl Store {
         let global = Box::try_new_in(GlobalAlloc, UnsafeCell::new(global)).ok_or_else(|| Error::OutOfMemory)?;
         self.globals.push_or_alloc(global).map_err(|_| Error::OutOfMemory)?;
         return Ok(id);
+    }
+
+
+    pub fn caller_instance(&self) -> Result<InstanceId, Error> {
+        // @speed: cache?
+        let Some(Some(frame)) = self.thread.frames.last() else { return Err(Error::CallerNotWasm) };
+        return Ok(InstanceId { id: frame.instance });
+    }
+
+    pub fn caller_memory<'a>(&'a self) -> Result<Memory<'a>, Error> {
+        // @speed: cache?
+        let Some(Some(frame)) = self.thread.frames.last() else { return Err(Error::CallerNotWasm) };
+        let inst = &self.instances[frame.instance as usize];
+        let Some(mem_id) = inst.memories.get(0) else { return Err(Error::CallerNoMemory) };
+        return Ok(Memory::new(&self.memories[*mem_id as usize]));
     }
 }
 

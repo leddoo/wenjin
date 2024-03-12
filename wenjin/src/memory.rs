@@ -115,4 +115,10 @@ impl<'a> Memory<'a> {
     }
 }
 
+impl<'a> core::fmt::Debug for Memory<'a> {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        write!(f, "Memory")
+    }
+}
+
 

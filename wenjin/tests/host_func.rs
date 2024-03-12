@@ -1,4 +1,4 @@
-use wenjin::{Store, TypedFuncId};
+use wenjin::Store;
 
 
 #[test]

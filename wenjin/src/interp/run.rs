@@ -1,5 +1,7 @@
 use core::hint::unreachable_unchecked;
 
+use sti::traits::UnwrapDebug;
+
 use crate::{Error, Table, Memory, Global};
 use crate::store::{Store, FuncKind, StackValue, StackFrame};
 
@@ -458,6 +460,8 @@ impl Store {
                         }
 
                         FuncKind::Host(f) => unsafe {
+                            let bp_offset = state.sp.offset_from(state.bp) as u32 - f.num_params as u32;
+
                             let stack = &mut self.thread.stack;
 
                             let bp = state.bp.offset_from(stack.as_ptr()) as usize;
@@ -471,12 +475,23 @@ impl Store {
                                 todo!()
                             }
 
-                            // don't need a stack frame.
-                            // recursive `run_interp` calls handle that.
+                            let frame = StackFrame {
+                                instance: state.instance,
+                                func: state.func,
+                                pc: core::ptr::NonNull::new_unchecked(state.pc),
+                                bp_offset,
+                            };
+                            if self.thread.frames.push_or_alloc(Some(frame)).is_err() {
+                                todo!()
+                            }
 
                             if (f.call)(&*f.data as *const _ as *const u8, self).is_err() {
                                 todo!()
                             }
+
+                            self.thread.frames.pop().unwrap_debug();
+
+                            // @cleanup: reuse `RETURN` logic?
 
                             let mut memory = state.memory;
                             let mut memory_size = state.memory_size;
