@@ -313,6 +313,8 @@ impl Store {
         };
 
         if imports.len() > wasm.imports.imports.len() {
+            dbg!(imports);
+            dbg!(wasm.imports.imports);
             todo!()
         }
 
@@ -341,6 +343,8 @@ impl Store {
             };
             let func = &self.funcs[func_id.id as usize];
             if func.ty != ty {
+                dbg!(func.ty);
+                dbg!(ty);
                 todo!()
             }
 
@@ -478,10 +482,10 @@ impl Store {
         for export in module.wasm.exports {
             if export.name == name {
                 return Ok(match export.kind {
-                    wasm::ExportKind::Func(idx) => Extern::Func(FuncId { id: instance.funcs[idx as usize] }),
-                    wasm::ExportKind::Table(_) => todo!(),
-                    wasm::ExportKind::Memory(_) => todo!(),
-                    wasm::ExportKind::Global(_) => todo!(),
+                    wasm::ExportKind::Func(idx)   => Extern::Func(FuncId { id: instance.funcs[idx as usize] }),
+                    wasm::ExportKind::Table(idx)  => Extern::Table(TableId { id: instance.tables[idx as usize] }),
+                    wasm::ExportKind::Memory(idx) => Extern::Memory(MemoryId { id: instance.memories[idx as usize] }),
+                    wasm::ExportKind::Global(idx) => Extern::Global(GlobalId { id: instance.globals[idx as usize] }),
                 });
             }
         }
@@ -508,6 +512,27 @@ impl Store {
     pub fn get_export_func<P: WasmTypes, R: WasmTypes>(&self, instance_id: InstanceId, name: &str) -> Result<TypedFuncId<P, R>, Error> {
         let func = self.get_export_func_dyn(instance_id, name)?;
         self.check_func_type(func)
+    }
+
+    pub fn get_export_table(&self, instance_id: InstanceId, name: &str) -> Result<TableId, Error> {
+        let Extern::Table(tab) = self.get_export(instance_id, name)? else {
+            todo!()
+        };
+        return Ok(tab);
+    }
+
+    pub fn get_export_memory(&self, instance_id: InstanceId, name: &str) -> Result<MemoryId, Error> {
+        let Extern::Memory(mem) = self.get_export(instance_id, name)? else {
+            todo!()
+        };
+        return Ok(mem);
+    }
+
+    pub fn get_export_global(&self, instance_id: InstanceId, name: &str) -> Result<GlobalId, Error> {
+        let Extern::Global(glob) = self.get_export(instance_id, name)? else {
+            todo!()
+        };
+        return Ok(glob);
     }
 
     pub fn call_dyn<'r>(&mut self, func_id: FuncId, args: &[Value], rets: &'r mut [Value]) -> Result<&'r mut [Value], Error> {

@@ -56,7 +56,7 @@ pub fn derive_ctype(item: TokenStream) -> TokenStream {
 
                 let size = ::core::mem::size_of::<#ty>();
                 let prev_end = offset + size;
-                #ty::clear_padding(unsafe { bytes.get_mut(offset..prev_end).unwrap_unchecked() });
+                <#ty as ::wenjin::CType>::clear_padding(unsafe { bytes.get_mut(offset..prev_end).unwrap_unchecked() });
             });
         }
 

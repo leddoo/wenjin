@@ -4,6 +4,7 @@ use core::marker::PhantomData;
 use core::mem::size_of;
 
 use sti::alloc::{Alloc, GlobalAlloc, Layout};
+use sti::vec::Vec;
 
 use wasm::Limits;
 
@@ -83,6 +84,7 @@ impl Drop for MemoryData {
 }
 
 
+#[derive(Clone, Copy)]
 pub struct Memory<'a> {
     inner: NonNull<MemoryData>,
     phantom: PhantomData<&'a mut MemoryData>,
@@ -131,6 +133,49 @@ impl<'a> Memory<'a> {
             T::clear_padding(core::slice::from_raw_parts_mut(ptr, size_of::<T>()));
             return Ok(());
         }
+    }
+
+    #[inline]
+    pub fn parse_cstr(&self, ptr: WasmPtr<u8>) -> Result<WasmSlice<u8>, Error> {
+        let mut at = ptr.addr as usize;
+        unsafe {
+            let mem_size = self.size_bytes();
+            let base = self.inner.as_ref().buffer.as_ptr();
+            while at < mem_size {
+                if *base.add(at) == 0 {
+                    return Ok(WasmSlice { ptr, len: WasmSize((at - ptr.addr as usize) as u32) });
+                }
+                at += 1;
+            }
+            todo!()
+        }
+    }
+
+    #[inline]
+    pub unsafe fn read_slice(&self, slice: WasmSlice<u8>, dst: *mut u8) -> Result<(), Error> {
+        let addr = slice.ptr.addr as usize;
+        let len = slice.len.usize();
+
+        let Some(end) = addr.checked_add(len) else { todo!() };
+        if end > self.size_bytes() { todo!() }
+
+        unsafe {
+            let base = self.inner.as_ref().buffer.as_ptr();
+            core::ptr::copy_nonoverlapping(base.add(addr), dst, len);
+            return Ok(());
+        }
+    }
+
+    #[inline]
+    pub fn read_slice_to_vec(&self, slice: WasmSlice<u8>, out: &mut Vec<u8>) -> Result<(), Error> {
+        let len = slice.len.0 as usize;
+        // @todo: oom.
+        out.reserve_extra(len);
+        unsafe {
+            self.read_slice(slice, out.as_mut_ptr().add(out.len()))?;
+            out.set_len(out.len() + len)
+        }
+        return Ok(());
     }
 
     #[inline]
@@ -227,6 +272,11 @@ impl<T: CType> WasmPtr<T> {
     #[inline(always)]
     pub fn new(addr: u32) -> WasmPtr<T> {
         WasmPtr { addr, phantom: PhantomData }
+    }
+
+    #[inline(always)]
+    pub fn is_null(self) -> bool {
+        self.addr == 0
     }
 
     #[inline(always)]

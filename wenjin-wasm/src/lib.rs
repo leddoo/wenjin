@@ -11,6 +11,7 @@ pub use validator::{Validator, ValidatorError};
 
 
 pub const PAGE_SIZE: usize = 64*1024;
+pub const PAGE_SIZE32: u32 = 64*1024;
 
 
 pub type TypeIdx = u32;

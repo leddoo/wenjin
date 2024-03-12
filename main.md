@@ -1,8 +1,8 @@
 
 - todo:
-    - malloc test.
     - global api.
         - `caller_global(name)`?
+    - panic eh?
     - rest of the owl:
         - clone the wasm (cause we have dangling refs).
         - validate non-code sections (incl elem, data).
@@ -16,6 +16,8 @@
 - backlog:
     - typed global api.
     - wat parser.
+    - make ids wasmtype/ctype.
+    - granular mem string utils, tests.
 
 - robustness:
     - is there a `loop.params-shifter`-like validation test with an invalid push (type) in the loop?

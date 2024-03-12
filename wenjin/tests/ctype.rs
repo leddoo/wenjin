@@ -42,8 +42,9 @@ fn ctype_padding() {
         ]);
 
 
-        mem.write(WasmPtr::new(0), foos).unwrap();
-        let wasm_bytes = mem.read::<[u8; 16]>(WasmPtr::new(0)).unwrap();
+        let addr = 1;
+        mem.write(WasmPtr::new(addr), foos).unwrap();
+        let wasm_bytes = mem.read::<[u8; 16]>(WasmPtr::new(addr)).unwrap();
         assert_eq!(wasm_bytes, [
              42, 0, 0, 0, 0xff, 0xff, 0xff, 0xff,
             123, 0, 0, 0, 0x12, 0x34, 0x56, 0x78,
