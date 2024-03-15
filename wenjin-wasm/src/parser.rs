@@ -20,6 +20,50 @@ pub struct ParseError {
 
 #[derive(Clone, Copy, Debug)]
 pub enum ParseErrorKind {
+    UnexpectedEof,
+    Leb128Overflow,
+    StringNotUtf8,
+    InvalidSignature,
+    InvalidVersion,
+    InvalidValueType,
+    InvalidRefType,
+    InvalidFuncType,
+    InvalidBlockType,
+    InvalidLimits,
+    InvalidGlobalType,
+    InvalidSectionType,
+    InvalidImport,
+    InvalidExport,
+    InvalidElement,
+    InvalidConstExpr,
+    SectionTrailingData,
+    DuplicateSection,
+    TypeSectionLimit,
+    ImportSectionLimit,
+    FuncSectionLimit,
+    TableSectionLimit,
+    MemorySectionLimit,
+    GlobalSectionLimit,
+    ExportSectionLimit,
+    ElementSectionLimit,
+    DataSectionLimit,
+    CustomSectionLimit,
+    FuncSectionNotBeforeCode,
+    NumCodesNeNumFuncs,
+    TooManyLocals,
+    UnsupportedOperator,
+    OOM,
+    Todo,
+}
+
+impl From<leb128::Leb128Error> for ParseErrorKind {
+    #[inline]
+    fn from(value: leb128::Leb128Error) -> Self {
+        match value {
+            leb128::Leb128Error::Overflow => ParseErrorKind::Leb128Overflow,
+            leb128::Leb128Error::EOI => ParseErrorKind::UnexpectedEof,
+        }
+    }
 }
 
 type Result<T> = core::result::Result<T, ParseError>;
@@ -37,6 +81,11 @@ impl<'a> Parser<'a> {
     }
 
     #[inline]
+    pub fn is_done(&self) -> bool {
+        self.reader.is_empty()
+    }
+
+    #[inline]
     pub fn from_sub_section(wasm: &'a [u8], sub: SubSection) -> Self {
         let end = sub.offset + sub.len;
         let mut reader = Reader::new(&wasm[..end]);
@@ -46,50 +95,40 @@ impl<'a> Parser<'a> {
 
     #[inline]
     pub fn next(&mut self) -> Result<u8> {
-        return self.reader.next().ok_or_else(||
-            todo!());
-    }
-
-    #[inline]
-    pub fn is_done(&self) -> bool {
-        self.reader.is_empty()
-    }
-
-    pub fn expect_done(&self) -> Result<()> {
-        if self.reader.len() != 0 {
-            todo!()
-        }
-        return Ok(());
+        return self.reader.next()
+            .ok_or_else(|| self.error(ParseErrorKind::UnexpectedEof));
     }
 
     #[inline]
     pub fn parse_i32(&mut self) -> Result<i32> {
-        leb128::decode_i32(&mut self.reader).map_err(|_|
-            todo!())
+        leb128::decode_i32(&mut self.reader)
+            .map_err(|e| self.error(e.into()))
     }
 
     #[inline]
     pub fn parse_i64(&mut self) -> Result<i64> {
-        leb128::decode_i64(&mut self.reader).map_err(|_|
-            todo!())
+        leb128::decode_i64(&mut self.reader)
+            .map_err(|e| self.error(e.into()))
     }
 
     #[inline]
     pub fn parse_f32(&mut self) -> Result<f32> {
-        let bytes = self.reader.next_array::<4>().ok_or_else(|| todo!())?;
+        let bytes = self.reader.next_array::<4>()
+            .ok_or_else(|| self.error(ParseErrorKind::UnexpectedEof))?;
         return Ok(f32::from_le_bytes(bytes));
     }
 
     #[inline]
     pub fn parse_f64(&mut self) -> Result<f64> {
-        let bytes = self.reader.next_array::<8>().ok_or_else(|| todo!())?;
+        let bytes = self.reader.next_array::<8>()
+            .ok_or_else(|| self.error(ParseErrorKind::UnexpectedEof))?;
         return Ok(f64::from_le_bytes(bytes));
     }
 
     #[inline]
     pub fn parse_u32(&mut self) -> Result<u32> {
-        leb128::decode_u32(&mut self.reader).map_err(|_|
-            todo!())
+        leb128::decode_u32(&mut self.reader)
+            .map_err(|e| self.error(e.into()))
     }
 
     #[inline]
@@ -99,34 +138,41 @@ impl<'a> Parser<'a> {
 
     pub fn parse_string(&mut self) -> Result<&'a str> {
         let len = self.parse_length()?;
-        let bytes = self.reader.next_n(len).ok_or_else(|| todo!())?;
-        let string = core::str::from_utf8(bytes).map_err(|_| todo!())?;
+        let bytes = self.reader.next_n(len)
+            .ok_or_else(|| self.error(ParseErrorKind::UnexpectedEof))?;
+        let string = core::str::from_utf8(bytes)
+            .map_err(|_| self.error(ParseErrorKind::StringNotUtf8))?;
         return Ok(string);
     }
 
     pub fn parse_value_type(&mut self) -> Result<ValueType> {
         let at = self.next()?;
-        let ty = ValueType::from_u8(at).ok_or_else(|| todo!())?;
+        let ty = ValueType::from_u8(at)
+            .ok_or_else(|| self.error(ParseErrorKind::InvalidValueType))?;
         return Ok(ty);
     }
 
     pub fn parse_ref_type(&mut self) -> Result<RefType> {
         let at = self.next()?;
-        let ty = RefType::from_u8(at).ok_or_else(|| todo!())?;
+        let ty = RefType::from_u8(at)
+            .ok_or_else(|| self.error(ParseErrorKind::InvalidRefType))?;
         return Ok(ty);
     }
 
     pub fn parse_func_type<'out>(&mut self, alloc: &'out Arena) -> Result<FuncType<'out>> {
-        self.reader.expect(0x60).map_err(|_| todo!())?;
+        self.reader.expect(0x60)
+            .map_err(|_| self.error(ParseErrorKind::InvalidFuncType))?;
 
         let num_params = self.parse_length()?;
-        let mut params = ManualVec::with_cap_in(alloc, num_params).ok_or_else(|| todo!())?;
+        let mut params = ManualVec::with_cap_in(alloc, num_params)
+            .ok_or_else(|| self.error(ParseErrorKind::OOM))?;
         for _ in 0..num_params {
             params.push(self.parse_value_type()?).unwrap_debug();
         }
 
         let num_rets = self.parse_length()?;
-        let mut rets = ManualVec::with_cap_in(alloc, num_rets).ok_or_else(|| todo!())?;
+        let mut rets = ManualVec::with_cap_in(alloc, num_rets)
+            .ok_or_else(|| self.error(ParseErrorKind::OOM))?;
         for _ in 0..num_rets {
             rets.push(self.parse_value_type()?).unwrap_debug();
         }
@@ -135,14 +181,14 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse_block_type(&mut self) -> Result<BlockType> {
-        let ty = leb128::decode_i64(&mut self.reader).map_err(|_|
-            todo!())?;
+        let ty = leb128::decode_i64(&mut self.reader)
+            .map_err(|e| self.error(e.into()))?;
 
         // @todo: explain this.
         if ty < 0 {
             let high_bits = !0x7f;
             if ty & high_bits != high_bits {
-                todo!()
+                return Err(self.error(ParseErrorKind::InvalidBlockType));
             }
             let ty = (ty & !high_bits) as u64 as u8;
 
@@ -150,10 +196,12 @@ impl<'a> Parser<'a> {
                 return Ok(BlockType::Unit);
             }
 
-            return Ok(BlockType::Value(ValueType::from_u8(ty).ok_or_else(|| todo!())?));
+            return Ok(BlockType::Value(ValueType::from_u8(ty)
+                .ok_or_else(|| self.error(ParseErrorKind::InvalidBlockType))?));
         }
         else {
-            let ty = ty.try_into().map_err(|_| todo!())?;
+            let ty = ty.try_into()
+                .map_err(|_| self.error(ParseErrorKind::InvalidBlockType))?;
             return Ok(BlockType::Func(ty));
         }
     }
@@ -163,7 +211,7 @@ impl<'a> Parser<'a> {
             0x00 => Limits { min: self.parse_u32()?, max: None },
             0x01 => Limits { min: self.parse_u32()?, max: Some(self.parse_u32()?) },
 
-            _ => todo!()
+            _ => return Err(self.error(ParseErrorKind::InvalidLimits))
         });
     }
 
@@ -183,28 +231,32 @@ impl<'a> Parser<'a> {
             0 => false,
             1 => true,
 
-            _ => todo!(),
+            _ => return Err(self.error(ParseErrorKind::InvalidGlobalType))
         };
         return Ok(GlobalType { ty, mutt });
     }
 
 
     pub fn parse_module_header(&mut self) -> Result<()> {
-        self.reader.expect_n(b"\0asm").map_err(|_| todo!())?;
-        self.reader.expect_n(&[1, 0, 0, 0]).map_err(|_| todo!())?;
+        self.reader.expect_n(b"\0asm")
+            .map_err(|_| self.error(ParseErrorKind::InvalidSignature))?;
+        self.reader.expect_n(&[1, 0, 0, 0])
+            .map_err(|_| self.error(ParseErrorKind::InvalidVersion))?;
         return Ok(())
     }
 
     pub fn parse_sub_section(&mut self) -> Result<SubSection> {
         let len = self.parse_length()?;
         let offset = self.reader.offset();
-        self.reader.next_n(len).ok_or_else(|| todo!())?;
+        self.reader.next_n(len)
+            .ok_or_else(|| self.error(ParseErrorKind::UnexpectedEof))?;
         return Ok(SubSection { offset, len });
     }
 
     pub fn parse_section(&mut self) -> Result<Section> {
         let kind = self.next()?;
-        let kind = SectionKind::from_u8(kind).ok_or_else(|| todo!())?;
+        let kind = SectionKind::from_u8(kind)
+            .ok_or_else(|| self.error(ParseErrorKind::InvalidSectionType))?;
         let sub = self.parse_sub_section()?;
         return Ok(Section { kind, sub });
     }
@@ -230,7 +282,7 @@ impl<'a> Parser<'a> {
             0x02 => ImportKind::Memory(self.parse_memory_type()?),
             0x03 => ImportKind::Global(self.parse_global_type()?),
 
-            _ => todo!()
+            _ => return Err(self.error(ParseErrorKind::InvalidImport))
         };
 
         return Ok(Import { module, name, kind });
@@ -250,7 +302,7 @@ impl<'a> Parser<'a> {
             0x02 => ExportKind::Memory(self.parse_u32()?),
             0x03 => ExportKind::Global(self.parse_u32()?),
 
-            _ => todo!()
+            _ => return Err(self.error(ParseErrorKind::InvalidExport))
         };
         return Ok(Export { name, kind });
     }
@@ -259,11 +311,12 @@ impl<'a> Parser<'a> {
         return Ok(match self.parse_u32()? {
             0 => {
                 let ConstExpr::I32(offset) = self.parse_const_expr()? else {
-                    todo!()
+                    return Err(self.error(ParseErrorKind::Todo));
                 };
 
                 let num_values = self.parse_length()?;
-                let mut values = ManualVec::with_cap_in(alloc, num_values).ok_or_else(|| todo!())?;
+                let mut values = ManualVec::with_cap_in(alloc, num_values)
+                    .ok_or_else(|| self.error(ParseErrorKind::OOM))?;
                 for _ in 0..num_values {
                     values.push(self.parse_u32()?).unwrap_debug();
                 }
@@ -279,16 +332,17 @@ impl<'a> Parser<'a> {
                 let table = self.parse_u32()?;
 
                 let ConstExpr::I32(offset) = self.parse_const_expr()? else {
-                    todo!()
+                    return Err(self.error(ParseErrorKind::Todo));
                 };
 
                 // funcref.
                 if self.reader.expect(0x00).is_err() {
-                    todo!();
+                    return Err(self.error(ParseErrorKind::InvalidElement));
                 }
 
                 let num_values = self.parse_length()?;
-                let mut values = ManualVec::with_cap_in(alloc, num_values).ok_or_else(|| todo!())?;
+                let mut values = ManualVec::with_cap_in(alloc, num_values)
+                    .ok_or_else(|| self.error(ParseErrorKind::OOM))?;
                 for _ in 0..num_values {
                     values.push(self.parse_u32()?).unwrap_debug();
                 }
@@ -300,7 +354,7 @@ impl<'a> Parser<'a> {
                 }
             }
 
-            _ => todo!(),
+            _ => return Err(self.error(ParseErrorKind::Todo))
         });
     }
 
@@ -317,10 +371,10 @@ impl<'a> Parser<'a> {
             let ty = p.parse_value_type()?;
 
             if locals.len() + n > max_locals as usize {
-                todo!()
+                return Err(self.error(ParseErrorKind::TooManyLocals));
             }
 
-            locals.reserve_extra(n).map_err(|_| todo!())?;
+            locals.reserve_extra(n).map_err(|_| self.error(ParseErrorKind::OOM))?;
             for _ in 0..n {
                 locals.push(ty).unwrap_debug();
             }
@@ -339,18 +393,19 @@ impl<'a> Parser<'a> {
             0 => {
                 let offset = self.parse_const_expr()?;
                 let ConstExpr::I32(offset) = offset else {
-                    todo!()
+                    return Err(self.error(ParseErrorKind::Todo));
                 };
 
                 let len = self.parse_length()?;
-                let values = self.reader.next_n(len).ok_or_else(|| todo!())?;
+                let values = self.reader.next_n(len)
+                    .ok_or_else(|| self.error(ParseErrorKind::UnexpectedEof))?;
 
                 let kind = DataKind::Active { mem: 0, offset: offset as u32 };
 
                 Data { kind, values }
             }
 
-            _ => todo!()
+            _ => return Err(self.error(ParseErrorKind::Todo))
         });
     }
 
@@ -364,11 +419,11 @@ impl<'a> Parser<'a> {
             Operator::GlobalGet { idx } => ConstExpr::Global(idx),
             Operator::RefNull { ty } => ConstExpr::RefNull(ty),
 
-            _ => todo!(),
+            _ => return Err(self.error(ParseErrorKind::Todo))
         };
 
         let Operator::End = self.parse_operator()? else {
-            todo!()
+            return Err(self.error(ParseErrorKind::InvalidConstExpr));
         };
 
         return Ok(result);
@@ -412,7 +467,8 @@ impl<'a> Parser<'a> {
             opcode::DROP            => v.visit_drop(),
             opcode::SELECT          => v.visit_select(),
             opcode::TYPED_SELECT    => {
-                self.reader.expect(0x01).map_err(|_| todo!())?;
+                self.reader.expect(0x01)
+                    .map_err(|_| self.error(ParseErrorKind::UnsupportedOperator))?;
                 v.visit_typed_select(self.parse_value_type()?)
             }
             opcode::LOCAL_GET       => v.visit_local_get(self.parse_u32()?),
@@ -420,8 +476,8 @@ impl<'a> Parser<'a> {
             opcode::LOCAL_TEE       => v.visit_local_tee(self.parse_u32()?),
             opcode::GLOBAL_GET      => v.visit_global_get(self.parse_u32()?),
             opcode::GLOBAL_SET      => v.visit_global_set(self.parse_u32()?),
-            opcode::TABLE_GET       => todo!(),
-            opcode::TABLE_SET       => todo!(),
+            opcode::TABLE_GET       => return Err(self.error(ParseErrorKind::Todo)),
+            opcode::TABLE_SET       => return Err(self.error(ParseErrorKind::Todo)),
             opcode::I32_LOAD        => v.visit_i32_load(self.parse_u32()?, self.parse_u32()?),
             opcode::I64_LOAD        => v.visit_i64_load(self.parse_u32()?, self.parse_u32()?),
             opcode::F32_LOAD        => v.visit_f32_load(self.parse_u32()?, self.parse_u32()?),
@@ -581,7 +637,7 @@ impl<'a> Parser<'a> {
             opcode::I64_EXTEND32_S  => v.visit_i64_extend32_s(),
             opcode::REF_NULL        => v.visit_ref_null(self.parse_ref_type()?),
             opcode::REF_IS_NULL     => v.visit_ref_is_null(),
-            opcode::REF_FUNC        => todo!(),
+            opcode::REF_FUNC        => return Err(self.error(ParseErrorKind::Todo)),
 
             0xfc => {
                 let op = self.parse_u32()?;
@@ -589,13 +645,11 @@ impl<'a> Parser<'a> {
                     opcode::xfc::MEMORY_COPY => v.visit_memory_copy(self.parse_u32()?, self.parse_u32()?),
                     opcode::xfc::MEMORY_FILL => v.visit_memory_fill(self.parse_u32()?),
 
-                    _ => todo!()
+                    _ => return Err(self.error(ParseErrorKind::UnsupportedOperator))
                 }
             }
 
-            _ => {
-                todo!()
-            }
+            _ => return Err(self.error(ParseErrorKind::UnsupportedOperator))
         })
     }
 
@@ -620,7 +674,7 @@ impl<'a> Parser<'a> {
             let kind = section.kind;
 
             if kind != SectionKind::Custom && has_section[kind as usize] {
-                todo!()
+                return Err(p.error(ParseErrorKind::DuplicateSection));
             }
             has_section[kind as usize] = true;
 
@@ -628,22 +682,22 @@ impl<'a> Parser<'a> {
             match kind {
                 SectionKind::Custom => {
                     if customs.len() >= limits.max_customs as usize {
-                        todo!();
+                        return Err(sp.error(ParseErrorKind::CustomSectionLimit));
                     }
 
                     customs.push_or_alloc(sp.parse_custom_section()?)
-                        .map_err(|_| todo!())?;
+                        .map_err(|_| sp.error(ParseErrorKind::OOM))?;
                 }
 
                 SectionKind::Type => {
                     let num_types = sp.parse_u32()?;
                     if num_types > limits.max_types {
-                        todo!();
+                        return Err(sp.error(ParseErrorKind::TypeSectionLimit));
                     }
 
                     let mut types =
                         ManualVec::with_cap_in(alloc, num_types as usize)
-                        .ok_or_else(|| todo!())?;
+                            .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
 
                     for _ in 0..num_types {
                         types.push(sp.parse_func_type(alloc)?).unwrap_debug();
@@ -655,12 +709,12 @@ impl<'a> Parser<'a> {
                 SectionKind::Import => {
                     let num_imports = sp.parse_u32()?;
                     if num_imports > limits.max_imports {
-                        todo!();
+                        return Err(sp.error(ParseErrorKind::ImportSectionLimit));
                     }
 
                     let mut imports =
                         ManualVec::with_cap_in(alloc, num_imports as usize)
-                        .ok_or_else(|| todo!())?;
+                            .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
 
                     let mut num_funcs = 0;
                     let mut num_tables = 0;
@@ -680,19 +734,19 @@ impl<'a> Parser<'a> {
 
                     let mut funcs =
                         ManualVec::with_cap_in(alloc, num_funcs)
-                        .ok_or_else(|| todo!())?;
+                            .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
 
                     let mut tables =
                         ManualVec::with_cap_in(alloc, num_tables)
-                        .ok_or_else(|| todo!())?;
+                            .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
 
                     let mut memories =
                         ManualVec::with_cap_in(alloc, num_memories)
-                        .ok_or_else(|| todo!())?;
+                            .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
 
                     let mut globals =
                         ManualVec::with_cap_in(alloc, num_globals)
-                        .ok_or_else(|| todo!())?;
+                            .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
 
                     for import in imports.iter().copied() {
                         match import.kind {
@@ -714,17 +768,17 @@ impl<'a> Parser<'a> {
 
                 SectionKind::Function => {
                     if has_section[SectionKind::Code as usize] {
-                        todo!()
+                        return Err(sp.error(ParseErrorKind::FuncSectionNotBeforeCode));
                     }
 
                     let num_funcs = sp.parse_u32()?;
                     if num_funcs > limits.max_funcs {
-                        todo!();
+                        return Err(sp.error(ParseErrorKind::FuncSectionLimit));
                     }
 
                     let mut funcs =
                         ManualVec::with_cap_in(alloc, num_funcs as usize)
-                        .ok_or_else(|| todo!())?;
+                        .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
 
                     for _ in 0..num_funcs {
                         funcs.push(sp.parse_u32()?).unwrap_debug();
@@ -736,12 +790,12 @@ impl<'a> Parser<'a> {
                 SectionKind::Table => {
                     let num_tables = sp.parse_u32()?;
                     if num_tables > limits.max_tables {
-                        todo!();
+                        return Err(sp.error(ParseErrorKind::TableSectionLimit));
                     }
 
                     let mut tables =
                         ManualVec::with_cap_in(alloc, num_tables as usize)
-                        .ok_or_else(|| todo!())?;
+                            .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
 
                     for _ in 0..num_tables {
                         tables.push(sp.parse_table_type()?).unwrap_debug();
@@ -753,12 +807,12 @@ impl<'a> Parser<'a> {
                 SectionKind::Memory => {
                     let num_memories = sp.parse_u32()?;
                     if num_memories > limits.max_memories {
-                        todo!();
+                        return Err(sp.error(ParseErrorKind::MemorySectionLimit));
                     }
 
                     let mut memories =
                         ManualVec::with_cap_in(alloc, num_memories as usize)
-                        .ok_or_else(|| todo!())?;
+                            .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
 
                     for _ in 0..num_memories {
                         memories.push(sp.parse_memory_type()?).unwrap_debug();
@@ -770,12 +824,12 @@ impl<'a> Parser<'a> {
                 SectionKind::Global => {
                     let num_globals = sp.parse_u32()?;
                     if num_globals > limits.max_globals {
-                        todo!();
+                        return Err(sp.error(ParseErrorKind::GlobalSectionLimit));
                     }
 
                     let mut globals =
                         ManualVec::with_cap_in(alloc, num_globals as usize)
-                        .ok_or_else(|| todo!())?;
+                            .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
 
                     for _ in 0..num_globals {
                         globals.push(sp.parse_global()?).unwrap_debug();
@@ -787,12 +841,12 @@ impl<'a> Parser<'a> {
                 SectionKind::Export => {
                     let num_exports = sp.parse_u32()?;
                     if num_exports > limits.max_exports {
-                        todo!();
+                        return Err(sp.error(ParseErrorKind::ExportSectionLimit));
                     }
 
                     let mut exports =
                         ManualVec::with_cap_in(alloc, num_exports as usize)
-                        .ok_or_else(|| todo!())?;
+                            .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
 
                     for _ in 0..num_exports {
                         exports.push(sp.parse_export()?).unwrap_debug();
@@ -808,12 +862,12 @@ impl<'a> Parser<'a> {
                 SectionKind::Element => {
                     let num_elements = sp.parse_u32()?;
                     if num_elements > limits.max_elements {
-                        todo!();
+                        return Err(sp.error(ParseErrorKind::ElementSectionLimit));
                     }
 
                     let mut elements =
                         ManualVec::with_cap_in(alloc, num_elements as usize)
-                        .ok_or_else(|| todo!())?;
+                            .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
 
                     for _ in 0..num_elements {
                         elements.push(sp.parse_element(alloc)?).unwrap_debug();
@@ -825,12 +879,12 @@ impl<'a> Parser<'a> {
                 SectionKind::Code => {
                     let num_codes = sp.parse_u32()?;
                     if num_codes as usize != module.funcs.len() {
-                        todo!()
+                        return Err(sp.error(ParseErrorKind::NumCodesNeNumFuncs));
                     }
 
                     let mut codes =
                         ManualVec::with_cap_in(alloc, num_codes as usize)
-                        .ok_or_else(|| todo!())?;
+                            .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
 
                     for _ in 0..num_codes {
                         codes.push(sp.parse_code(limits.max_locals, alloc)?).unwrap_debug();
@@ -842,12 +896,12 @@ impl<'a> Parser<'a> {
                 SectionKind::Data => {
                     let num_datas = sp.parse_u32()?;
                     if num_datas > limits.max_datas {
-                        todo!();
+                        return Err(sp.error(ParseErrorKind::DataSectionLimit));
                     }
 
                     let mut datas =
                         ManualVec::with_cap_in(alloc, num_datas as usize)
-                        .ok_or_else(|| todo!())?;
+                            .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
 
                     for _ in 0..num_datas {
                         datas.push(sp.parse_data()?).unwrap_debug();
@@ -860,12 +914,22 @@ impl<'a> Parser<'a> {
                     sp.parse_u32()?;
                 }
             }
-            sp.expect_done()?;
+
+            if sp.reader.len() != 0 {
+                return Err(sp.error(ParseErrorKind::SectionTrailingData));
+            }
         }
 
         module.customs = customs.leak();
 
         return Ok(module);
+    }
+
+
+    #[inline]
+    #[must_use]
+    fn error(&self, kind: ParseErrorKind) -> ParseError {
+        ParseError { offset: self.reader.offset(), kind }
     }
 }
 
