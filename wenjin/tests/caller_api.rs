@@ -10,8 +10,8 @@ fn caller_api() {
     let host_func = store.new_host_func({ let the_inst = the_inst.clone(); move |store: &mut Store, x: i32| {
         match x {
             0 => {
-                assert_eq!(store.caller_instance().unwrap_err(), Error::CallerNotWasm);
-                assert_eq!(store.caller_memory().unwrap_err(), Error::CallerNotWasm);
+                assert!(matches!(store.caller_instance().unwrap_err(), Error::CallerNotWasm));
+                assert!(matches!(store.caller_memory().unwrap_err(), Error::CallerNotWasm));
             }
 
             1 => {

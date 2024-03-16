@@ -29,7 +29,7 @@ impl MemoryData {
             size_pages: 0,
         };
 
-        this.grow(limits.min).map_err(|_| Error::OutOfMemory)?;
+        this.grow(limits.min).map_err(|_| Error::OOM)?;
 
         return Ok(this);
     }
@@ -109,7 +109,7 @@ impl<'a> Memory<'a> {
     #[inline]
     pub fn grow(&mut self, by_pages: u32) -> Result<u32, Error> {
         unsafe { self.inner.as_mut().grow(by_pages) }
-        .map_err(|_| Error::OutOfMemory)
+        .map_err(|_| Error::OOM)
     }
 
     #[inline]

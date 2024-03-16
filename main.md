@@ -1,15 +1,15 @@
 
 - todo:
-    - errors.
-        - validation errors.
-            - want access to parser offset (before operator).
-            - also for debug info.
-            - thinking just set on validator/compiler before parse.
+    - validation tests.
+    - validate non-code sections (incl elem, data).
+        - (debug) asserts in store.
+    - table get/set.
+    - unified stack.
+    - getrev, rw manual vec.
     - global api.
         - `caller_global(name)`?
     - rest of the owl:
         - clone the wasm (cause we have dangling refs).
-        - validate non-code sections (incl elem, data).
         - non-func imports.
         - pass remaining tests.
     - debugging.
@@ -18,6 +18,7 @@
 
 
 - backlog:
+    - wasm-testsuite imports.
     - typed global api.
     - wat parser.
     - make ids wasmtype/ctype.

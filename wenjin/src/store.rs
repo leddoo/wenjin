@@ -241,7 +241,7 @@ impl Store {
 
     pub fn new_module(&mut self, wasm: &[u8]) -> Result<ModuleId, Error> {
         let id = ModuleId {
-            id: self.modules.len().try_into().map_err(|_| Error::OutOfMemory)?,
+            id: self.modules.len().try_into().map_err(|_| Error::OOM)?,
         };
 
         let alloc = Arena::new();
@@ -252,7 +252,7 @@ impl Store {
         let mut validator = wasm::Validator::new(&module);
         let mut compiler = interp::Compiler::new(&module);
 
-        let mut funcs = ManualVec::with_cap(module.codes.len()).ok_or_else(|| Error::OutOfMemory)?;
+        let mut funcs = ManualVec::with_cap(module.codes.len()).ok_or_else(|| Error::OOM)?;
 
         for (i, code) in module.codes.iter().enumerate() {
             let mut p = wasm::Parser::from_sub_section(wasm, code.expr);
@@ -264,10 +264,11 @@ impl Store {
             compiler.begin_func(ty_idx);
 
             while !p.is_done() {
+                let offset = p.reader.offset();
                 let ((), ()) =
                     p.parse_operator_with(wasm::AndThenOp(&mut validator, &mut compiler))
-                    .map_err(|_| todo!())?
-                    .map_err(|_| todo!())?;
+                        .map_err(|e| Error::Parse(e))?
+                        .map_err(|e| Error::Validation(offset, e))?;
 
                 debug_assert_eq!(validator.num_stack(), compiler.num_stack());
                 debug_assert_eq!(validator.num_frames(), compiler.num_frames());
@@ -286,7 +287,7 @@ impl Store {
             let ty = unsafe { core::mem::transmute::<wasm::FuncType, wasm::FuncType>(ty) };
             funcs.push(ModuleFunc {
                 ty,
-                code: compiler.code(GlobalAlloc).ok_or_else(|| Error::OutOfMemory)?,
+                code: compiler.code(GlobalAlloc).ok_or_else(|| Error::OOM)?,
                 stack_size: validator.num_locals() + validator.max_stack(),
                 num_locals: validator.num_locals(),
             }).unwrap_debug();
@@ -297,7 +298,7 @@ impl Store {
             alloc,
             wasm: module,
             funcs,
-        }).map_err(|_| Error::OutOfMemory)?;
+        }).map_err(|_| Error::OOM)?;
 
         return Ok(id);
     }
@@ -309,7 +310,7 @@ impl Store {
         let wasm = unsafe { core::mem::transmute::<&wasm::Module, &wasm::Module>(&module.wasm) };
 
         let id = InstanceId {
-            id: self.instances.len().try_into().map_err(|_| Error::OutOfMemory)?,
+            id: self.instances.len().try_into().map_err(|_| Error::OOM)?,
         };
 
         if imports.len() > wasm.imports.imports.len() {
@@ -329,10 +330,10 @@ impl Store {
 
 
         let num_funcs = wasm.imports.funcs.len() + module.funcs.len();
-        let mut funcs = ManualVec::with_cap(num_funcs).ok_or_else(|| Error::OutOfMemory)?;
-        self.funcs.reserve_extra(num_funcs).map_err(|_| Error::OutOfMemory)?;
+        let mut funcs = ManualVec::with_cap(num_funcs).ok_or_else(|| Error::OOM)?;
+        self.funcs.reserve_extra(num_funcs).map_err(|_| Error::OOM)?;
         if u32::try_from(self.funcs.len() + num_funcs).is_err() {
-            return Err(Error::OutOfMemory);
+            return Err(Error::OOM);
         }
         for import in wasm.imports.imports {
             let wasm::ImportKind::Func(ty) = import.kind else { continue };
@@ -373,19 +374,19 @@ impl Store {
         }
 
 
-        let mut tables = ManualVec::with_cap(wasm.tables.len()).ok_or_else(|| Error::OutOfMemory)?;
+        let mut tables = ManualVec::with_cap(wasm.tables.len()).ok_or_else(|| Error::OOM)?;
         for tab in wasm.tables {
             tables.push(self.new_table(tab.ty, tab.limits)?.id).unwrap_debug();
         }
 
 
-        let mut memories = ManualVec::with_cap(wasm.memories.len()).ok_or_else(|| Error::OutOfMemory)?;
+        let mut memories = ManualVec::with_cap(wasm.memories.len()).ok_or_else(|| Error::OOM)?;
         for mem in wasm.memories {
             memories.push(self.new_memory(mem.limits)?.id).unwrap_debug();
         }
 
 
-        let mut globals = ManualVec::with_cap(wasm.globals.len()).ok_or_else(|| Error::OutOfMemory)?;
+        let mut globals = ManualVec::with_cap(wasm.globals.len()).ok_or_else(|| Error::OOM)?;
         for global in wasm.globals {
             let init = match global.init {
                 wasm::ConstExpr::I32(v) => Value::I32(v),
@@ -399,7 +400,7 @@ impl Store {
                 },
             };
 
-            globals.push(self.new_global(global.ty.mutt, init)?.id).unwrap_debug();
+            globals.push(self.new_global(global.ty.mutable, init)?.id).unwrap_debug();
         }
 
 
@@ -470,7 +471,7 @@ impl Store {
             tables,
             memories,
             globals,
-        }).map_err(|_| Error::OutOfMemory)?;
+        }).map_err(|_| Error::OOM)?;
 
         return Ok(id);
     }
@@ -560,7 +561,7 @@ impl Store {
 
         // push args onto stack.
         let bp = self.thread.stack.len();
-        self.thread.stack.reserve_extra(args.len().max(rets.len())).map_err(|_| Error::OutOfMemory)?;
+        self.thread.stack.reserve_extra(args.len().max(rets.len())).map_err(|_| Error::OOM)?;
         for arg in args {
             self.thread.stack.push(StackValue::from_value(*arg)).unwrap_debug();
         }
@@ -587,7 +588,7 @@ impl Store {
         // push args onto stack.
         let stack = &mut self.thread.stack;
         let bp = stack.len();
-        stack.reserve_extra(P::WASM_TYPES.len().max(R::WASM_TYPES.len())).map_err(|_| Error::OutOfMemory)?;
+        stack.reserve_extra(P::WASM_TYPES.len().max(R::WASM_TYPES.len())).map_err(|_| Error::OOM)?;
         unsafe {
             args.to_stack_values(stack.as_mut_ptr().add(bp));
             stack.set_len(bp + P::WASM_TYPES.len());
@@ -635,7 +636,7 @@ impl Store {
         (&mut self, f: H) -> Result<TypedFuncId<P, R>, Error>
     {
         let id = TypedFuncId {
-            id: self.funcs.len().try_into().map_err(|_| Error::OutOfMemory)?,
+            id: self.funcs.len().try_into().map_err(|_| Error::OOM)?,
             phantom: PhantomData,
         };
 
@@ -644,7 +645,7 @@ impl Store {
             kind: FuncKind::Host(
                 HostFuncData {
                     data: {
-                        let data = Box::try_new_in(GlobalAlloc, f).ok_or(Error::OutOfMemory)?;
+                        let data = Box::try_new_in(GlobalAlloc, f).ok_or(Error::OOM)?;
                         let (data, alloc) = data.into_raw_parts();
                         unsafe { Box::from_raw_parts(data as NonNull<dyn Any>, alloc) }
                     },
@@ -655,21 +656,21 @@ impl Store {
                     num_params: P::WASM_TYPES.len().try_into().unwrap(),
                     num_rets: R::WASM_TYPES.len().try_into().unwrap(),
                 })
-        }).map_err(|_| Error::OutOfMemory)?;
+        }).map_err(|_| Error::OOM)?;
 
         return Ok(id);
     }
 
     pub fn new_func_var<P: WasmTypes, R: WasmTypes>(&mut self) -> Result<TypedFuncId<P, R>, Error> {
         let id = TypedFuncId {
-            id: self.funcs.len().try_into().map_err(|_| Error::OutOfMemory)?,
+            id: self.funcs.len().try_into().map_err(|_| Error::OOM)?,
             phantom: PhantomData,
         };
 
         self.funcs.push_or_alloc(FuncData {
             ty: wasm::FuncType { params: P::WASM_TYPES, rets: R::WASM_TYPES },
             kind: FuncKind::Var(None),
-        }).map_err(|_| Error::OutOfMemory)?;
+        }).map_err(|_| Error::OOM)?;
 
         return Ok(id);
     }
@@ -695,23 +696,23 @@ impl Store {
 
     pub fn new_table(&mut self, ty: wasm::RefType, limits: wasm::Limits) -> Result<TableId, Error> {
         let id = TableId {
-            id: self.tables.len().try_into().map_err(|_| Error::OutOfMemory)?,
+            id: self.tables.len().try_into().map_err(|_| Error::OOM)?,
         };
 
         let table = TableData::new(ty, limits, RefValue::NULL)?;
-        let table = Box::try_new_in(GlobalAlloc, UnsafeCell::new(table)).ok_or_else(|| Error::OutOfMemory)?;
-        self.tables.push_or_alloc(table).map_err(|_| Error::OutOfMemory)?;
+        let table = Box::try_new_in(GlobalAlloc, UnsafeCell::new(table)).ok_or_else(|| Error::OOM)?;
+        self.tables.push_or_alloc(table).map_err(|_| Error::OOM)?;
         return Ok(id);
     }
 
     pub fn new_memory(&mut self, limits: wasm::Limits) -> Result<MemoryId, Error> {
         let id = MemoryId {
-            id: self.memories.len().try_into().map_err(|_| Error::OutOfMemory)?,
+            id: self.memories.len().try_into().map_err(|_| Error::OOM)?,
         };
 
         let memory = MemoryData::new(limits)?;
-        let memory = Box::try_new_in(GlobalAlloc, UnsafeCell::new(memory)).ok_or_else(|| Error::OutOfMemory)?;
-        self.memories.push_or_alloc(memory).map_err(|_| Error::OutOfMemory)?;
+        let memory = Box::try_new_in(GlobalAlloc, UnsafeCell::new(memory)).ok_or_else(|| Error::OOM)?;
+        self.memories.push_or_alloc(memory).map_err(|_| Error::OOM)?;
         return Ok(id);
     }
 
@@ -723,12 +724,12 @@ impl Store {
 
     pub fn new_global(&mut self, mutable: bool, value: Value) -> Result<GlobalId, Error> {
         let id = GlobalId {
-            id: self.globals.len().try_into().map_err(|_| Error::OutOfMemory)?,
+            id: self.globals.len().try_into().map_err(|_| Error::OOM)?,
         };
 
         let global = GlobalData::new(mutable, value);
-        let global = Box::try_new_in(GlobalAlloc, UnsafeCell::new(global)).ok_or_else(|| Error::OutOfMemory)?;
-        self.globals.push_or_alloc(global).map_err(|_| Error::OutOfMemory)?;
+        let global = Box::try_new_in(GlobalAlloc, UnsafeCell::new(global)).ok_or_else(|| Error::OOM)?;
+        self.globals.push_or_alloc(global).map_err(|_| Error::OOM)?;
         return Ok(id);
     }
 

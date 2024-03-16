@@ -55,7 +55,7 @@ fn malloc() {
         let mut mem = store.caller_memory()?;
 
         if size.0 > u32::MAX / 2 {
-            return Err(Error::OutOfMemory);
+            return Err(Error::OOM);
         }
         let size = wenjin::ceil_to_multiple_pow2(size.usize(), ALIGN) as u32;
 
@@ -89,7 +89,7 @@ fn malloc() {
 
         // grow.
         let Some(grow_size) = (BlockHeader::SIZE + wasm::PAGE_SIZE32-1).checked_add(size) else {
-            return Err(Error::OutOfMemory);
+            return Err(Error::OOM);
         };
         let num_pages = grow_size / wasm::PAGE_SIZE as u32;
         let old_pages = mem.grow(num_pages)?;

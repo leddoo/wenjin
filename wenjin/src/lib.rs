@@ -7,14 +7,16 @@ mod store;
 mod interp;
 
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug)]
 pub enum Error {
-    OutOfMemory,
+    Parse(wasm::ParseError),
+    Validation(usize, wasm::ValidatorError),
     InvalidHandle,
     Unreachable,
     Unimplemented,
     CallerNotWasm,
     CallerNoMemory,
+    OOM,
 }
 
 

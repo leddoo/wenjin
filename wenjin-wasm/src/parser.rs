@@ -227,13 +227,13 @@ impl<'a> Parser<'a> {
 
     pub fn parse_global_type(&mut self) -> Result<GlobalType> {
         let ty = self.parse_value_type()?;
-        let mutt = match self.next()? {
+        let mutable = match self.next()? {
             0 => false,
             1 => true,
 
             _ => return Err(self.error(ParseErrorKind::InvalidGlobalType))
         };
-        return Ok(GlobalType { ty, mutt });
+        return Ok(GlobalType { ty, mutable });
     }
 
 

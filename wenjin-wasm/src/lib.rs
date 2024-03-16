@@ -161,7 +161,7 @@ pub struct MemoryType {
 #[derive(Clone, Copy, Debug)]
 pub struct GlobalType {
     pub ty: ValueType,
-    pub mutt: bool,
+    pub mutable: bool,
 }
 
 

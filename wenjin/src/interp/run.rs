@@ -222,7 +222,7 @@ impl Store {
             }
 
 
-            self.thread.frames.push_or_alloc(None).map_err(|_| Error::OutOfMemory)?;
+            self.thread.frames.push_or_alloc(None).map_err(|_| Error::OOM)?;
 
             State {
                 instance: f.instance,

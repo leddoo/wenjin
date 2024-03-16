@@ -26,7 +26,7 @@ impl TableData {
             values: ManualVec::new(),
         };
 
-        this.grow(limits.min, default).map_err(|_| Error::OutOfMemory)?;
+        this.grow(limits.min, default).map_err(|_| Error::OOM)?;
 
         return Ok(this);
     }
