@@ -3,7 +3,7 @@ use sti::reader::Reader;
 use sti::arena::Arena;
 use sti::manual_vec::ManualVec;
 
-use crate::{leb128, BrTable};
+use crate::{leb128, BrTable, ValidatorError};
 use crate::{ValueType, RefType, FuncType, BlockType, Limits, TableType, MemoryType, GlobalType};
 use crate::{Import, ImportKind, Imports, Global, Export, ExportKind, Element, ElementKind, Code, Data, DataKind};
 use crate::{SubSection, Section, SectionKind, CustomSection};
@@ -654,14 +654,34 @@ impl<'a> Parser<'a> {
     }
 
 
+    #[inline]
+    #[must_use]
+    fn error(&self, kind: ParseErrorKind) -> ParseError {
+        ParseError { offset: self.reader.offset(), kind }
+    }
+}
+
+
+#[derive(Clone, Copy, Debug)]
+pub enum ParseModuleError {
+    Parse(ParseError),
+    Validation(usize, ValidatorError),
+}
+
+impl From<ParseError> for ParseModuleError {
+    #[inline(always)]
+    fn from(value: ParseError) -> Self { Self::Parse(value) }
+}
+
+impl<'a> Parser<'a> {
     pub fn parse_module
         (wasm: &'a [u8],
          limits: ModuleLimits,
          alloc: &'a Arena)
-        -> Result<Module<'a>>
+        -> core::result::Result<Module<'a>, ParseModuleError>
     {
         let mut p = Parser::new(wasm);
-        p.parse_module_header()?;
+        p.parse_module_header().map_err(ParseModuleError::Parse)?;
 
         let mut has_section = [false; SectionKind::COUNT];
 
@@ -674,7 +694,7 @@ impl<'a> Parser<'a> {
             let kind = section.kind;
 
             if kind != SectionKind::Custom && has_section[kind as usize] {
-                return Err(p.error(ParseErrorKind::DuplicateSection));
+                return Err(p.error(ParseErrorKind::DuplicateSection).into());
             }
             has_section[kind as usize] = true;
 
@@ -682,7 +702,7 @@ impl<'a> Parser<'a> {
             match kind {
                 SectionKind::Custom => {
                     if customs.len() >= limits.max_customs as usize {
-                        return Err(sp.error(ParseErrorKind::CustomSectionLimit));
+                        return Err(sp.error(ParseErrorKind::CustomSectionLimit).into());
                     }
 
                     customs.push_or_alloc(sp.parse_custom_section()?)
@@ -692,7 +712,7 @@ impl<'a> Parser<'a> {
                 SectionKind::Type => {
                     let num_types = sp.parse_u32()?;
                     if num_types > limits.max_types {
-                        return Err(sp.error(ParseErrorKind::TypeSectionLimit));
+                        return Err(sp.error(ParseErrorKind::TypeSectionLimit).into());
                     }
 
                     let mut types =
@@ -709,7 +729,7 @@ impl<'a> Parser<'a> {
                 SectionKind::Import => {
                     let num_imports = sp.parse_u32()?;
                     if num_imports > limits.max_imports {
-                        return Err(sp.error(ParseErrorKind::ImportSectionLimit));
+                        return Err(sp.error(ParseErrorKind::ImportSectionLimit).into());
                     }
 
                     let mut imports =
@@ -722,9 +742,18 @@ impl<'a> Parser<'a> {
                     let mut num_globals = 0;
 
                     for _ in 0..num_imports {
+                        let offset = sp.reader.offset();
+
                         let import = sp.parse_import()?;
                         match import.kind {
-                            ImportKind::Func(_)   => num_funcs    += 1,
+                            ImportKind::Func(ty) => {
+                                num_funcs += 1;
+                                if module.types.get(ty as usize).is_none() {
+                                    return Err(ParseModuleError::Validation(offset,
+                                        ValidatorError::InvalidTypeIdx));
+                                }
+                            }
+
                             ImportKind::Table(_)  => num_tables   += 1,
                             ImportKind::Memory(_) => num_memories += 1,
                             ImportKind::Global(_) => num_globals  += 1,
@@ -768,12 +797,12 @@ impl<'a> Parser<'a> {
 
                 SectionKind::Function => {
                     if has_section[SectionKind::Code as usize] {
-                        return Err(sp.error(ParseErrorKind::FuncSectionNotBeforeCode));
+                        return Err(sp.error(ParseErrorKind::FuncSectionNotBeforeCode).into());
                     }
 
                     let num_funcs = sp.parse_u32()?;
                     if num_funcs > limits.max_funcs {
-                        return Err(sp.error(ParseErrorKind::FuncSectionLimit));
+                        return Err(sp.error(ParseErrorKind::FuncSectionLimit).into());
                     }
 
                     let mut funcs =
@@ -781,7 +810,13 @@ impl<'a> Parser<'a> {
                         .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
 
                     for _ in 0..num_funcs {
-                        funcs.push(sp.parse_u32()?).unwrap_debug();
+                        let offset = sp.reader.offset();
+                        let ty = sp.parse_u32()?;
+                        if module.types.get(ty as usize).is_none() {
+                            return Err(ParseModuleError::Validation(offset,
+                                ValidatorError::InvalidTypeIdx));
+                        }
+                        funcs.push(ty).unwrap_debug();
                     }
 
                     module.funcs = funcs.leak();
@@ -790,7 +825,7 @@ impl<'a> Parser<'a> {
                 SectionKind::Table => {
                     let num_tables = sp.parse_u32()?;
                     if num_tables > limits.max_tables {
-                        return Err(sp.error(ParseErrorKind::TableSectionLimit));
+                        return Err(sp.error(ParseErrorKind::TableSectionLimit).into());
                     }
 
                     let mut tables =
@@ -807,7 +842,7 @@ impl<'a> Parser<'a> {
                 SectionKind::Memory => {
                     let num_memories = sp.parse_u32()?;
                     if num_memories > limits.max_memories {
-                        return Err(sp.error(ParseErrorKind::MemorySectionLimit));
+                        return Err(sp.error(ParseErrorKind::MemorySectionLimit).into());
                     }
 
                     let mut memories =
@@ -824,7 +859,7 @@ impl<'a> Parser<'a> {
                 SectionKind::Global => {
                     let num_globals = sp.parse_u32()?;
                     if num_globals > limits.max_globals {
-                        return Err(sp.error(ParseErrorKind::GlobalSectionLimit));
+                        return Err(sp.error(ParseErrorKind::GlobalSectionLimit).into());
                     }
 
                     let mut globals =
@@ -841,7 +876,7 @@ impl<'a> Parser<'a> {
                 SectionKind::Export => {
                     let num_exports = sp.parse_u32()?;
                     if num_exports > limits.max_exports {
-                        return Err(sp.error(ParseErrorKind::ExportSectionLimit));
+                        return Err(sp.error(ParseErrorKind::ExportSectionLimit).into());
                     }
 
                     let mut exports =
@@ -849,7 +884,38 @@ impl<'a> Parser<'a> {
                             .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
 
                     for _ in 0..num_exports {
-                        exports.push(sp.parse_export()?).unwrap_debug();
+                        let offset = sp.reader.offset();
+                        let export = sp.parse_export()?;
+                        match export.kind {
+                            ExportKind::Func(idx) => {
+                                if module.funcs.get(idx as usize).is_none() {
+                                    return Err(ParseModuleError::Validation(offset,
+                                        ValidatorError::InvalidFuncIdx));
+                                }
+                            }
+
+                            ExportKind::Table(idx) => {
+                                if module.tables.get(idx as usize).is_none() {
+                                    return Err(ParseModuleError::Validation(offset,
+                                        ValidatorError::InvalidTableIdx));
+                                }
+                            }
+
+                            ExportKind::Memory(idx) => {
+                                if module.memories.get(idx as usize).is_none() {
+                                    return Err(ParseModuleError::Validation(offset,
+                                        ValidatorError::InvalidMemoryIdx));
+                                }
+                            }
+
+                            ExportKind::Global(idx) => {
+                                if module.globals.get(idx as usize).is_none() {
+                                    return Err(ParseModuleError::Validation(offset,
+                                        ValidatorError::InvalidGlobalIdx));
+                                }
+                            }
+                        }
+                        exports.push(export).unwrap_debug();
                     }
 
                     module.exports = exports.leak();
@@ -862,7 +928,7 @@ impl<'a> Parser<'a> {
                 SectionKind::Element => {
                     let num_elements = sp.parse_u32()?;
                     if num_elements > limits.max_elements {
-                        return Err(sp.error(ParseErrorKind::ElementSectionLimit));
+                        return Err(sp.error(ParseErrorKind::ElementSectionLimit).into());
                     }
 
                     let mut elements =
@@ -870,7 +936,20 @@ impl<'a> Parser<'a> {
                             .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
 
                     for _ in 0..num_elements {
-                        elements.push(sp.parse_element(alloc)?).unwrap_debug();
+                        let offset = sp.reader.offset();
+                        let elem = sp.parse_element(alloc)?;
+                        match elem.ty {
+                            RefType::FuncRef => {
+                                for idx in elem.values {
+                                    if module.funcs.get(*idx as usize).is_none() {
+                                        return Err(ParseModuleError::Validation(offset,
+                                            ValidatorError::InvalidFuncIdx));
+                                    }
+                                }
+                            }
+                            RefType::ExternRef => (),
+                        }
+                        elements.push(elem).unwrap_debug();
                     }
 
                     module.elements = elements.leak();
@@ -879,7 +958,7 @@ impl<'a> Parser<'a> {
                 SectionKind::Code => {
                     let num_codes = sp.parse_u32()?;
                     if num_codes as usize != module.funcs.len() {
-                        return Err(sp.error(ParseErrorKind::NumCodesNeNumFuncs));
+                        return Err(sp.error(ParseErrorKind::NumCodesNeNumFuncs).into());
                     }
 
                     let mut codes =
@@ -896,7 +975,7 @@ impl<'a> Parser<'a> {
                 SectionKind::Data => {
                     let num_datas = sp.parse_u32()?;
                     if num_datas > limits.max_datas {
-                        return Err(sp.error(ParseErrorKind::DataSectionLimit));
+                        return Err(sp.error(ParseErrorKind::DataSectionLimit).into());
                     }
 
                     let mut datas =
@@ -916,20 +995,13 @@ impl<'a> Parser<'a> {
             }
 
             if sp.reader.len() != 0 {
-                return Err(sp.error(ParseErrorKind::SectionTrailingData));
+                return Err(sp.error(ParseErrorKind::SectionTrailingData).into());
             }
         }
 
         module.customs = customs.leak();
 
         return Ok(module);
-    }
-
-
-    #[inline]
-    #[must_use]
-    fn error(&self, kind: ParseErrorKind) -> ParseError {
-        ParseError { offset: self.reader.offset(), kind }
     }
 }
 

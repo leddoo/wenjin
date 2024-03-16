@@ -1,10 +1,9 @@
 
 - todo:
     - pass most new tests.
-    - validate non-code sections (incl elem, data).
-        - (debug) asserts in store.
     - table get/set.
     - unified stack.
+    - reader expectn err(eof: bool).
     - getrev, rw manual vec.
     - global api.
         - `caller_global(name)`?

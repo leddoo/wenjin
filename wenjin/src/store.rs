@@ -247,7 +247,10 @@ impl Store {
         let alloc = Arena::new();
 
         let module = wasm::Parser::parse_module(wasm, Default::default(), &alloc)
-            .map_err(|e| Error::Parse(e))?;
+            .map_err(|e| match e {
+                wasm::ParseModuleError::Parse(e) => Error::Parse(e),
+                wasm::ParseModuleError::Validation(o, e) => Error::Validation(o, e),
+            })?;
 
         let mut validator = wasm::Validator::new(&module);
         let mut compiler = interp::Compiler::new(&module);

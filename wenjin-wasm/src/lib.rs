@@ -6,7 +6,7 @@ mod parser;
 mod validator;
 
 pub use operator::{Operator, OperatorVisitor, MkOperator, AndThenOp};
-pub use parser::{Parser, ParseError, ParseErrorKind};
+pub use parser::{Parser, ParseError, ParseErrorKind, ParseModuleError};
 pub use validator::{Validator, ValidatorError};
 
 

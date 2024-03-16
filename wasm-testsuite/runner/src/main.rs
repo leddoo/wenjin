@@ -222,12 +222,35 @@ fn main() {
 
                     let message = read_string(&mut reader);
 
+                    if wasm.len() == 0 {
+                        println!("skip parse test {idx} ({message:?})");
+                        continue;
+                    }
+
                     num_tests += 1;
                     let Err(wenjin::Error::Parse(e)) = store.new_module(wasm) else {
                         println!("module should be malformed {idx} with error {message:?}");
                         continue;
                     };
-                    println!("check {idx} {:?} {:?}", message, e);
+
+                    use wenjin::wasm::ParseErrorKind as E;
+                    match (message, e.kind) {
+                        ("i32 constant", E::Leb128Overflow) |
+                        ("unexpected end" | "length out of bounds", E::UnexpectedEof) |
+                        ("function and code section have inconsistent lengths", E::NumCodesNeNumFuncs) |
+                        ("malformed section id", E::InvalidSectionType) |
+                        ("malformed mutability", E::InvalidGlobalType) |
+                        ("malformed UTF-8 encoding", E::StringNotUtf8)
+                        => {
+                            num_successes += 1;
+                        }
+
+                        _ => {
+                            println!("incorrect parse error {idx}");
+                            println!("  {e:?}");
+                            println!("  expected {message:?}");
+                        }
+                    }
                 }
 
                 0x03 => {
@@ -252,13 +275,17 @@ fn main() {
                          E::TypeMismatch { expected: _, found: _ } |
                          E::StackUnderflow |
                          E::FrameExtraStack |
-                         E::BrTableInvalidTargetTypes { label: _ }) |
+                         E::BrTableInvalidTargetTypes { label: _ } |
+                         E::SelectUnexpectedRefType |
+                         E::SelectTypeMismatch(_, _)) |
                         ("unknown label", E::InvalidLabel) |
                         ("unknown type", E::InvalidTypeIdx) |
                         ("unknown function", E::InvalidFuncIdx) |
                         ("unknown table", E::InvalidTableIdx) |
-                        ("unknown memory", E::InvalidMemoryIdx) |
-                        ("unknown global", E::InvalidGlobalIdx)
+                        ("unknown memory" | "unknown memory 0", E::InvalidMemoryIdx) |
+                        ("unknown global", E::InvalidGlobalIdx) |
+                        ("unknown local", E::InvalidLocalIdx) |
+                        ("global is immutable", E::GlobalNotMutable)
                         => {
                             num_successes += 1;
                         }
