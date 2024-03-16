@@ -1017,7 +1017,6 @@ impl<'a> Parser<'a> {
 
                             DataKind::Active { mem, offset: _ } => {
                                 if module.get_memory(mem).is_none() {
-                                    println!("!!!");
                                     return Err(ParseModuleError::Validation(offset,
                                         ValidatorError::InvalidMemoryIdx));
                                 }

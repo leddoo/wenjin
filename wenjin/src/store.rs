@@ -316,21 +316,6 @@ impl Store {
             id: self.instances.len().try_into().map_err(|_| Error::OOM)?,
         };
 
-        if imports.len() != wasm.imports.imports.len() {
-            //dbg!(imports);
-            //dbg!(wasm.imports.imports);
-            return Err(Error::Todo);
-        }
-
-        let lookup_import = |module, name| {
-            for (m, n, import) in imports.iter().copied() {
-                if m == module && n == name {
-                    return Ok(import);
-                }
-            }
-            todo!();
-        };
-
 
         let num_funcs = wasm.imports.funcs.len() + wasm.funcs.len();
         let mut funcs = ManualVec::with_cap(num_funcs).ok_or_else(|| Error::OOM)?;
@@ -349,6 +334,15 @@ impl Store {
         let mut globals = ManualVec::with_cap(num_globals).ok_or_else(|| Error::OOM)?;
 
         for import in wasm.imports.imports {
+            let lookup_import = |module, name| {
+                for (m, n, import) in imports.iter().copied() {
+                    if m == module && n == name {
+                        return Ok(import);
+                    }
+                }
+                todo!();
+            };
+
             match import.kind {
                 wasm::ImportKind::Func(ty) => {
                     let ty = wasm.types[ty as usize];
@@ -374,8 +368,19 @@ impl Store {
                     return Err(Error::Todo);
                 }
 
-                wasm::ImportKind::Global(_) => {
-                    return Err(Error::Todo);
+                wasm::ImportKind::Global(ty) => {
+                    let Extern::Global(global_id) = lookup_import(import.module, import.name)? else {
+                        todo!()
+                    };
+                    let global = Global::new(&self.globals[global_id.id as usize]);
+                    if ty.ty != global.ty() {
+                        todo!()
+                    }
+                    if ty.mutable && !global.mutable() {
+                        todo!()
+                    }
+
+                    globals.push(global_id.id).unwrap_debug();
                 }
             }
         }
@@ -401,14 +406,17 @@ impl Store {
                 }),
             }).unwrap_debug();
         }
+        debug_assert_eq!(funcs.len(), num_funcs);
 
         for tab in wasm.tables {
             tables.push(self.new_table(tab.ty, tab.limits)?.id).unwrap_debug();
         }
+        debug_assert_eq!(tables.len(), num_tables);
 
         for mem in wasm.memories {
             memories.push(self.new_memory(mem.limits)?.id).unwrap_debug();
         }
+        debug_assert_eq!(memories.len(), num_memories);
 
         for global in wasm.globals {
             let init = match global.init {
@@ -425,6 +433,7 @@ impl Store {
 
             globals.push(self.new_global(global.ty.mutable, init)?.id).unwrap_debug();
         }
+        debug_assert_eq!(globals.len(), num_globals);
 
 
         for elem in wasm.elements {

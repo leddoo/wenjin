@@ -171,6 +171,9 @@ fn main() {
 
         let mut store = Store::new();
 
+        let st_global_i32 = store.new_global(false, Value::I32(666)).unwrap();
+        let st_global_i64 = store.new_global(false, Value::I64(666)).unwrap();
+
         let mut reader = Reader::new(bytes);
 
         fn read_usize(reader: &mut Reader<u8>) -> usize {
@@ -285,7 +288,10 @@ fn main() {
                     num_tests += 1;
                     let inst = 
                         store.new_module(wasm)
-                        .and_then(|module| store.new_instance(module, &[]));
+                        .and_then(|module| store.new_instance(module, &[
+                            ("spectest", "global_i32", st_global_i32.into()),
+                            ("spectest", "global_i64", st_global_i64.into()),
+                        ]));
                     match inst {
                         Ok(inst) => {
                             num_successes += 1;

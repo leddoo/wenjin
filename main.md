@@ -1,10 +1,7 @@
 
 - todo:
     - trap tests.
-    - table get/set.
     - unified stack.
-    - reader expectn err(eof: bool).
-    - getrev, rw manual vec.
     - global api.
         - `caller_global(name)`?
     - rest of the owl:
@@ -21,7 +18,7 @@
         - duplicate exports.
         - memory <= 4gib.
         - data count section.
-    - wasm-testsuite imports.
+    - table get/set.
     - typed global api.
     - wat parser.
     - make ids wasmtype/ctype.
@@ -37,6 +34,8 @@
 
 - cleanup:
     - `Memory::bounds_check`.
+    - getrev, rw manual vec.
+    - reader expectn: Err(eof: bool).
 
 - sti:
     - `reserve_extra` retry with exact value on failure?

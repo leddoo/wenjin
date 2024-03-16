@@ -29,6 +29,16 @@ impl<'a> Global<'a> {
     }
 
     #[inline]
+    pub fn ty(&self) -> wasm::ValueType {
+        unsafe { self.inner.as_ref().value.ty() }
+    }
+
+    #[inline]
+    pub fn mutable(&self) -> bool {
+        unsafe { self.inner.as_ref().mutable }
+    }
+
+    #[inline]
     pub fn get(&self) -> Value {
         unsafe { self.inner.as_ref().value }
     }
