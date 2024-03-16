@@ -22,6 +22,8 @@ pub enum ValidatorError {
     InvalidMemoryIdx,
     InvalidGlobalIdx,
     InvalidLocalIdx,
+    InvalidGlobalInit,
+    NonIdIfWithoutElse,
     BrTableInvalidTargetTypes { label: u32 },
     CallIndirectTableNotOfFuncRefs,
     SelectUnexpectedRefType,
@@ -250,52 +252,32 @@ impl<'a> Validator<'a> {
     }
 
     fn func(&self, idx: FuncIdx) -> Result<FuncType<'a>, ValidatorError> {
-        let idx = idx as usize;
-        let imports = self.module.imports.funcs;
-        let type_idx = match imports.get(idx).copied() {
-            Some(it) => it,
-            None => 
-                self.module.funcs.get(idx - imports.len()).copied()
-                    .ok_or_else(|| ValidatorError::InvalidFuncIdx)?,
-        };
-
+        let type_idx = self.module.get_func(idx)
+            .ok_or_else(|| ValidatorError::InvalidFuncIdx)?;
         // by imports-valid, funcs-valid.
         Ok(self.module.types[type_idx as usize])
     }
 
     fn table(&self, idx: TableIdx) -> Result<TableType, ValidatorError> {
-        let idx = idx as usize;
-        let imports = self.module.imports.tables;
-        Ok(match imports.get(idx).copied() {
-            Some(it) => it,
-            None => self.module.tables.get(idx - imports.len()).copied()
-                .ok_or_else(|| ValidatorError::InvalidTableIdx)?,
-        })
+        self.module.get_table(idx)
+            .ok_or_else(|| ValidatorError::InvalidTableIdx)
     }
 
     fn memory(&self, idx: TableIdx) -> Result<MemoryType, ValidatorError> {
-        let idx = idx as usize;
-        let imports = self.module.imports.memories;
-        Ok(match imports.get(idx).copied() {
-            Some(it) => it,
-            None => self.module.memories.get(idx - imports.len()).copied()
-                .ok_or_else(|| ValidatorError::InvalidMemoryIdx)?,
-        })
+        self.module.get_memory(idx)
+            .ok_or_else(|| ValidatorError::InvalidMemoryIdx)
     }
 
     fn global(&self, idx: u32) -> Result<GlobalType, ValidatorError> {
-        let idx = idx as usize;
-        let imports = self.module.imports.globals;
-        Ok(match imports.get(idx).copied() {
-            Some(it) => it,
-            None => self.module.globals.get(idx - imports.len()).copied()
-                .ok_or_else(|| ValidatorError::InvalidGlobalIdx)?.ty,
-        })
+        self.module.get_global(idx)
+            .ok_or_else(|| ValidatorError::InvalidGlobalIdx)
     }
 
 
     #[inline]
-    fn check_load_store(ty: ValueType, align: u32, max_align: u32) -> Result<(), ValidatorError> {
+    fn check_load_store(&self, ty: ValueType, align: u32, max_align: u32) -> Result<(), ValidatorError> {
+        self.memory(0)?;
+
         match ty {
             ValueType::I32 | ValueType::I64 |
             ValueType::F32 | ValueType::F64 |
@@ -318,14 +300,14 @@ impl<'a> Validator<'a> {
 
     #[inline]
     fn load(&mut self, ty: ValueType, align: u32, _offset: u32, max_align: u32) -> Result<(), ValidatorError> {
-        Self::check_load_store(ty, align, max_align)?;
+        self.check_load_store(ty, align, max_align)?;
         self.expect(ValueType::I32)?;
         self.push(ty)
     }
 
     #[inline]
     fn store(&mut self, ty: ValueType, align: u32, _offset: u32, max_align: u32) -> Result<(), ValidatorError> {
-        Self::check_load_store(ty, align, max_align)?;
+        self.check_load_store(ty, align, max_align)?;
         self.expect(ty)?;
         self.expect(ValueType::I32)
     }
@@ -428,6 +410,13 @@ impl<'a> OperatorVisitor<'a> for Validator<'a> {
 
     fn visit_end(&mut self) -> Self::Output {
         let frame = self.pop_frame()?;
+        if frame.kind == ControlFrameKind::If {
+            let begin_types = self.block_begin_types(frame.ty);
+            let end_types = self.block_end_types(frame.ty);
+            if end_types != begin_types {
+                return Err(ValidatorError::NonIdIfWithoutElse);
+            }
+        }
         if self.frames.len() > 0 {
             self.push_n(self.block_end_types(frame.ty))?;
         }

@@ -316,10 +316,10 @@ impl Store {
             id: self.instances.len().try_into().map_err(|_| Error::OOM)?,
         };
 
-        if imports.len() > wasm.imports.imports.len() {
-            dbg!(imports);
-            dbg!(wasm.imports.imports);
-            todo!()
+        if imports.len() != wasm.imports.imports.len() {
+            //dbg!(imports);
+            //dbg!(wasm.imports.imports);
+            return Err(Error::Todo);
         }
 
         let lookup_import = |module, name| {
@@ -332,28 +332,54 @@ impl Store {
         };
 
 
-        let num_funcs = wasm.imports.funcs.len() + module.funcs.len();
+        let num_funcs = wasm.imports.funcs.len() + wasm.funcs.len();
         let mut funcs = ManualVec::with_cap(num_funcs).ok_or_else(|| Error::OOM)?;
         self.funcs.reserve_extra(num_funcs).map_err(|_| Error::OOM)?;
         if u32::try_from(self.funcs.len() + num_funcs).is_err() {
             return Err(Error::OOM);
         }
+
+        let num_tables = wasm.imports.tables.len() + wasm.tables.len();
+        let mut tables = ManualVec::with_cap(num_tables).ok_or_else(|| Error::OOM)?;
+
+        let num_memories = wasm.imports.memories.len() + wasm.memories.len();
+        let mut memories = ManualVec::with_cap(num_memories).ok_or_else(|| Error::OOM)?;
+
+        let num_globals = wasm.imports.globals.len() + wasm.globals.len();
+        let mut globals = ManualVec::with_cap(num_globals).ok_or_else(|| Error::OOM)?;
+
         for import in wasm.imports.imports {
-            let wasm::ImportKind::Func(ty) = import.kind else { continue };
-            let ty = wasm.types[ty as usize];
+            match import.kind {
+                wasm::ImportKind::Func(ty) => {
+                    let ty = wasm.types[ty as usize];
 
-            let Extern::Func(func_id) = lookup_import(import.module, import.name)? else {
-                todo!()
-            };
-            let func = &self.funcs[func_id.id as usize];
-            if func.ty != ty {
-                dbg!(func.ty);
-                dbg!(ty);
-                todo!()
+                    let Extern::Func(func_id) = lookup_import(import.module, import.name)? else {
+                        todo!()
+                    };
+                    let func = &self.funcs[func_id.id as usize];
+                    if func.ty != ty {
+                        dbg!(func.ty);
+                        dbg!(ty);
+                        todo!()
+                    }
+
+                    funcs.push(func_id.id).unwrap_debug();
+                }
+
+                wasm::ImportKind::Table(_) => {
+                    return Err(Error::Todo);
+                }
+
+                wasm::ImportKind::Memory(_) => {
+                    return Err(Error::Todo);
+                }
+
+                wasm::ImportKind::Global(_) => {
+                    return Err(Error::Todo);
+                }
             }
-
-            funcs.push(func_id.id).unwrap_debug();
         }
+
         for func in module.funcs.iter() {
             let code = func.code.inner().as_ptr() as *mut u8;
             let code_end = unsafe {
@@ -376,20 +402,14 @@ impl Store {
             }).unwrap_debug();
         }
 
-
-        let mut tables = ManualVec::with_cap(wasm.tables.len()).ok_or_else(|| Error::OOM)?;
         for tab in wasm.tables {
             tables.push(self.new_table(tab.ty, tab.limits)?.id).unwrap_debug();
         }
 
-
-        let mut memories = ManualVec::with_cap(wasm.memories.len()).ok_or_else(|| Error::OOM)?;
         for mem in wasm.memories {
             memories.push(self.new_memory(mem.limits)?.id).unwrap_debug();
         }
 
-
-        let mut globals = ManualVec::with_cap(wasm.globals.len()).ok_or_else(|| Error::OOM)?;
         for global in wasm.globals {
             let init = match global.init {
                 wasm::ConstExpr::I32(v) => Value::I32(v),
@@ -465,8 +485,6 @@ impl Store {
                 }
             }
         }
-
-        debug_assert_eq!(imports.len(), wasm.imports.imports.len());
 
         self.instances.push_or_alloc(InstanceData {
             module: module_id.id,

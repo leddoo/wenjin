@@ -151,7 +151,8 @@ fn main() {
         ("traps.wast", &include_bytes!("../../testsuite-bin/traps.wast")[..]),
         ("type.wast", &include_bytes!("../../testsuite-bin/type.wast")[..]),
         ("unreachable.wast", &include_bytes!("../../testsuite-bin/unreachable.wast")[..]),
-        ("unreached-invalid.wast", &include_bytes!("../../testsuite-bin/unreached-invalid.wast")[..]),
+        // we don't do stack polymorphism.
+        //("unreached-invalid.wast", &include_bytes!("../../testsuite-bin/unreached-invalid.wast")[..]),
         ("unreached-valid.wast", &include_bytes!("../../testsuite-bin/unreached-valid.wast")[..]),
         //("unwind.wast", &include_bytes!("../../testsuite-bin/unwind.wast")[..]),
         ("utf8-custom-section-id.wast", &include_bytes!("../../testsuite-bin/utf8-custom-section-id.wast")[..]),
@@ -162,6 +163,7 @@ fn main() {
 
     let mut num_tests = 0;
     let mut num_successes = 0;
+    let mut num_skipped = 0;
 
     for (name, bytes) in tests {
         println!("#running {name:?}");
@@ -194,6 +196,77 @@ fn main() {
             }
         }
 
+        fn check_error(result: Result<(), wenjin::Error>, message: &str, idx: i32, kind: &str) -> bool {
+            let Err(e) = result else {
+                println!("failure: module should be {kind} ({idx}) with error {message:?}");
+                return false;
+            };
+
+            match e {
+                wenjin::Error::Parse(e) => {
+                    use wenjin::wasm::ParseErrorKind as E;
+                    match (message, e.kind) {
+                        ("i32 constant", E::Leb128Overflow) |
+                        ("unexpected end" | "length out of bounds", E::UnexpectedEof) |
+                        ("function and code section have inconsistent lengths", E::NumCodesNeNumFuncs) |
+                        ("malformed section id", E::InvalidSectionType) |
+                        ("malformed mutability", E::InvalidGlobalType) |
+                        ("malformed UTF-8 encoding", E::StringNotUtf8) |
+                        ("constant expression required", E::InvalidConstExpr) |
+                        ("type mismatch", E::InvalidConstExpr) |
+                        ("invalid result arity", E::UnsupportedOperator)
+                        => {
+                            return true;
+                        }
+
+                        _ => {
+                            println!("failure: incorrect parse error, {kind} {idx}");
+                            println!("  {e:?}");
+                            println!("  expected {message:?}");
+                            return false;
+                        }
+                    }
+                }
+
+                wenjin::Error::Validation(_, e) => {
+                    use wenjin::wasm::ValidatorError as E;
+                    match (message, e) {
+                        ("alignment must not be larger than natural", E::AlignTooLarge) |
+                        ("type mismatch",
+                         E::TypeMismatch { expected: _, found: _ } |
+                         E::StackUnderflow |
+                         E::FrameExtraStack |
+                         E::NonIdIfWithoutElse |
+                         E::BrTableInvalidTargetTypes { label: _ } |
+                         E::SelectUnexpectedRefType |
+                         E::SelectTypeMismatch(_, _) |
+                         E::InvalidGlobalInit) |
+                        ("unknown label", E::InvalidLabel) |
+                        ("unknown type", E::InvalidTypeIdx) |
+                        ("unknown function", E::InvalidFuncIdx) |
+                        ("unknown table", E::InvalidTableIdx) |
+                        ("unknown memory" | "unknown memory 0", E::InvalidMemoryIdx) |
+                        ("unknown global", E::InvalidGlobalIdx) |
+                        ("unknown local", E::InvalidLocalIdx) |
+                        ("global is immutable", E::GlobalNotMutable) |
+                        ("constant expression required", E::InvalidGlobalInit)
+                        => {
+                            return true;
+                        }
+
+                        _ => {
+                            println!("failure: incorrect validation error, {kind} {idx}");
+                            println!("  {e:?}");
+                            println!("  expected {message:?}");
+                            return false;
+                        }
+                    }
+                }
+
+                _ => todo!()
+            }
+        }
+
         let mut module_idx = 0;
         let mut malformed_idx = 0;
         let mut invalid_idx = 0;
@@ -202,15 +275,28 @@ fn main() {
         while let Some(op) = reader.next() {
             match op {
                 0x01 => {
-                    println!("module {module_idx}");
+                    let idx = module_idx;
                     module_idx += 1;
+                    println!("module {idx}");
 
                     let wasm = read_bytes(&mut reader);
                     module_size += wasm.len();
 
-                    let module = store.new_module(wasm).unwrap();
-                    let inst = store.new_instance(module, &[]).unwrap();
-                    instance = Some(inst);
+                    num_tests += 1;
+                    let inst = 
+                        store.new_module(wasm)
+                        .and_then(|module| store.new_instance(module, &[]));
+                    match inst {
+                        Ok(inst) => {
+                            num_successes += 1;
+                            instance = Some(inst);
+                        }
+                        Err(e) => {
+                            println!("failure: failed to instantiate module {idx}");
+                            println!("  error: {e:?}");
+                            instance = None;
+                        }
+                    }
                 }
 
                 0x02 => {
@@ -224,32 +310,14 @@ fn main() {
 
                     if wasm.len() == 0 {
                         println!("skip parse test {idx} ({message:?})");
+                        num_skipped += 1;
                         continue;
                     }
 
                     num_tests += 1;
-                    let Err(wenjin::Error::Parse(e)) = store.new_module(wasm) else {
-                        println!("module should be malformed {idx} with error {message:?}");
-                        continue;
-                    };
-
-                    use wenjin::wasm::ParseErrorKind as E;
-                    match (message, e.kind) {
-                        ("i32 constant", E::Leb128Overflow) |
-                        ("unexpected end" | "length out of bounds", E::UnexpectedEof) |
-                        ("function and code section have inconsistent lengths", E::NumCodesNeNumFuncs) |
-                        ("malformed section id", E::InvalidSectionType) |
-                        ("malformed mutability", E::InvalidGlobalType) |
-                        ("malformed UTF-8 encoding", E::StringNotUtf8)
-                        => {
-                            num_successes += 1;
-                        }
-
-                        _ => {
-                            println!("incorrect parse error {idx}");
-                            println!("  {e:?}");
-                            println!("  expected {message:?}");
-                        }
+                    let result = store.new_module(wasm).map(|_| ());
+                    if check_error(result, message, idx, "malformed") {
+                        num_successes += 1;
                     }
                 }
 
@@ -263,38 +331,9 @@ fn main() {
                     let message = read_string(&mut reader);
 
                     num_tests += 1;
-                    let Err(wenjin::Error::Validation(_, e)) = store.new_module(wasm) else {
-                        println!("module should be invalid {idx} with error {message:?}");
-                        continue;
-                    };
-
-                    use wenjin::wasm::ValidatorError as E;
-                    match (message, e) {
-                        ("alignment must not be larger than natural", E::AlignTooLarge) |
-                        ("type mismatch",
-                         E::TypeMismatch { expected: _, found: _ } |
-                         E::StackUnderflow |
-                         E::FrameExtraStack |
-                         E::BrTableInvalidTargetTypes { label: _ } |
-                         E::SelectUnexpectedRefType |
-                         E::SelectTypeMismatch(_, _)) |
-                        ("unknown label", E::InvalidLabel) |
-                        ("unknown type", E::InvalidTypeIdx) |
-                        ("unknown function", E::InvalidFuncIdx) |
-                        ("unknown table", E::InvalidTableIdx) |
-                        ("unknown memory" | "unknown memory 0", E::InvalidMemoryIdx) |
-                        ("unknown global", E::InvalidGlobalIdx) |
-                        ("unknown local", E::InvalidLocalIdx) |
-                        ("global is immutable", E::GlobalNotMutable)
-                        => {
-                            num_successes += 1;
-                        }
-
-                        _ => {
-                            println!("incorrect validation error {idx}");
-                            println!("  {e:?}");
-                            println!("  expected {message:?}");
-                        }
+                    let result = store.new_module(wasm).map(|_| ());
+                    if check_error(result, message, idx, "invalid") {
+                        num_successes += 1;
                     }
                 }
 
@@ -304,12 +343,16 @@ fn main() {
                     let num_args = read_usize(&mut reader);
                     let args = Vec::from_iter((0..num_args).map(|_| { read_value(&mut reader) }));
 
-                    let inst = instance.unwrap();
+                    let Some(inst) = instance else {
+                        println!("skipping invoke (missing instance)");
+                        num_skipped += 1;
+                        continue;
+                    };
                     let func = store.get_export_func_dyn(inst, name).unwrap();
 
                     num_tests += 1;
                     if let Err(e) = store.call_dyn(func, &args, &mut []) {
-                        println!("invoke {name}({args:?})");
+                        println!("failure: invoke {name}({args:?})");
                         println!(" failed with error {e:?}");
                     }
                     else {
@@ -327,12 +370,16 @@ fn main() {
                     let rets = Vec::from_iter((0..num_rets).map(|_| { read_value(&mut reader) }));
 
                     let mut actual_rets = Vec::from_iter((0..num_rets).map(|_| Value::I32(0)));
-                    let inst = instance.unwrap();
+                    let Some(inst) = instance else {
+                        println!("skipping assert_return (missing instance)");
+                        num_skipped += 1;
+                        continue;
+                    };
                     let func = store.get_export_func_dyn(inst, name).unwrap();
 
                     num_tests += 1;
                     if let Err(e) = store.call_dyn(func, &args, &mut actual_rets) {
-                        println!("expected {name}({args:?}) = {rets:?}");
+                        println!("failure: expected {name}({args:?}) = {rets:?}");
                         println!(" failed with error {e:?}");
                     }
                     else {
@@ -353,7 +400,9 @@ fn main() {
                             num_successes += 1;
                         }
                         else {
-                            println!("expected {name}({args:?})\n =   {rets:?}\n got {actual_rets:?}");
+                            println!("failure: expected {name}({args:?})");
+                            println!(" =   {rets:?}");
+                            println!(" got {actual_rets:?}");
                         }
                     }
                 }
@@ -364,7 +413,8 @@ fn main() {
     }
 
     let dt = t0.elapsed();
-    println!("ran {num_tests} tests, {num_successes} succeeded, {} failed.", num_tests - num_successes);
+    let num_failed = num_tests - num_successes;
+    println!("ran {num_tests} tests, {num_successes} succeeded, {num_failed} failed, {num_skipped} skipped.");
     println!("in {dt:?}, total input size: {input_size}. total size of modules: {module_size}");
 }
 

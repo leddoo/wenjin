@@ -403,6 +403,51 @@ pub struct Module<'a> {
     pub customs:    &'a [CustomSection<'a>],
 }
 
+impl<'a> Module<'a> {
+    #[inline]
+    pub fn get_func(&self, idx: FuncIdx) -> Option<TypeIdx> {
+        let idx = idx as usize;
+        let imports = self.imports.funcs;
+        match imports.get(idx).copied() {
+            Some(x) => Some(x),
+            None => self.funcs.get(idx - imports.len()).copied()
+        }
+    }
+
+    #[inline]
+    pub fn get_table(&self, idx: TableIdx) -> Option<TableType> {
+        let idx = idx as usize;
+        let imports = self.imports.tables;
+        match imports.get(idx).copied() {
+            Some(x) => Some(x),
+            None => self.tables.get(idx - imports.len()).copied()
+        }
+    }
+
+    #[inline]
+    pub fn get_memory(&self, idx: MemoryIdx) -> Option<MemoryType> {
+        let idx = idx as usize;
+        let imports = self.imports.memories;
+        match imports.get(idx).copied() {
+            Some(x) => Some(x),
+            None => self.memories.get(idx - imports.len()).copied()
+        }
+    }
+
+    #[inline]
+    pub fn get_global(&self, idx: GlobalIdx) -> Option<GlobalType> {
+        let idx = idx as usize;
+        let imports = self.imports.globals;
+        match imports.get(idx).copied() {
+            Some(x) => Some(x),
+            None => match self.globals.get(idx - imports.len()) {
+                Some(x) => Some(x.ty),
+                None => None
+            }
+        }
+    }
+}
+
 
 
 pub struct U32Iter<'a> {

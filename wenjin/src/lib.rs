@@ -17,6 +17,7 @@ pub enum Error {
     CallerNotWasm,
     CallerNoMemory,
     OOM,
+    Todo,
 }
 
 

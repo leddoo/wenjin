@@ -419,7 +419,7 @@ impl<'a> Parser<'a> {
             Operator::GlobalGet { idx } => ConstExpr::Global(idx),
             Operator::RefNull { ty } => ConstExpr::RefNull(ty),
 
-            _ => return Err(self.error(ParseErrorKind::Todo))
+            _ => return Err(self.error(ParseErrorKind::InvalidConstExpr))
         };
 
         let Operator::End = self.parse_operator()? else {
@@ -467,6 +467,7 @@ impl<'a> Parser<'a> {
             opcode::DROP            => v.visit_drop(),
             opcode::SELECT          => v.visit_select(),
             opcode::TYPED_SELECT    => {
+                // length of types vector.
                 self.reader.expect(0x01)
                     .map_err(|_| self.error(ParseErrorKind::UnsupportedOperator))?;
                 v.visit_typed_select(self.parse_value_type()?)
@@ -862,12 +863,38 @@ impl<'a> Parser<'a> {
                         return Err(sp.error(ParseErrorKind::GlobalSectionLimit).into());
                     }
 
-                    let mut globals =
+                    let mut globals: ManualVec<Global, &Arena> =
                         ManualVec::with_cap_in(alloc, num_globals as usize)
                             .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
 
                     for _ in 0..num_globals {
-                        globals.push(sp.parse_global()?).unwrap_debug();
+                        let offset = sp.reader.offset();
+                        let global = sp.parse_global()?;
+
+                        let init_ty = match global.init {
+                            ConstExpr::I32(_) => ValueType::I32,
+                            ConstExpr::I64(_) => ValueType::I64,
+                            ConstExpr::F32(_) => ValueType::F32,
+                            ConstExpr::F64(_) => ValueType::F64,
+                            ConstExpr::Global(idx) => {
+                                let idx = idx as usize;
+                                let g = module.imports.globals.get(idx).copied()
+                                    .ok_or_else(|| ParseModuleError::Validation(offset,
+                                        ValidatorError::InvalidGlobalIdx))?;
+                                if g.mutable {
+                                    return Err(ParseModuleError::Validation(offset,
+                                        ValidatorError::InvalidGlobalInit));
+                                }
+                                g.ty
+                            }
+                            ConstExpr::RefNull(ty) => ty.to_value_type(),
+                        };
+                        if init_ty != global.ty.ty {
+                            return Err(ParseModuleError::Validation(offset,
+                                ValidatorError::InvalidGlobalInit));
+                        }
+
+                        globals.push(global).unwrap_debug();
                     }
 
                     module.globals = globals.leak();
@@ -888,28 +915,28 @@ impl<'a> Parser<'a> {
                         let export = sp.parse_export()?;
                         match export.kind {
                             ExportKind::Func(idx) => {
-                                if module.funcs.get(idx as usize).is_none() {
+                                if module.get_func(idx).is_none() {
                                     return Err(ParseModuleError::Validation(offset,
                                         ValidatorError::InvalidFuncIdx));
                                 }
                             }
 
                             ExportKind::Table(idx) => {
-                                if module.tables.get(idx as usize).is_none() {
+                                if module.get_table(idx).is_none() {
                                     return Err(ParseModuleError::Validation(offset,
                                         ValidatorError::InvalidTableIdx));
                                 }
                             }
 
                             ExportKind::Memory(idx) => {
-                                if module.memories.get(idx as usize).is_none() {
+                                if module.get_memory(idx).is_none() {
                                     return Err(ParseModuleError::Validation(offset,
                                         ValidatorError::InvalidMemoryIdx));
                                 }
                             }
 
                             ExportKind::Global(idx) => {
-                                if module.globals.get(idx as usize).is_none() {
+                                if module.get_global(idx).is_none() {
                                     return Err(ParseModuleError::Validation(offset,
                                         ValidatorError::InvalidGlobalIdx));
                                 }
@@ -941,7 +968,7 @@ impl<'a> Parser<'a> {
                         match elem.ty {
                             RefType::FuncRef => {
                                 for idx in elem.values {
-                                    if module.funcs.get(*idx as usize).is_none() {
+                                    if module.get_func(*idx).is_none() {
                                         return Err(ParseModuleError::Validation(offset,
                                             ValidatorError::InvalidFuncIdx));
                                     }
@@ -983,13 +1010,27 @@ impl<'a> Parser<'a> {
                             .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
 
                     for _ in 0..num_datas {
-                        datas.push(sp.parse_data()?).unwrap_debug();
+                        let offset = sp.reader.offset();
+                        let data = sp.parse_data()?;
+                        match data.kind {
+                            DataKind::Passive => (),
+
+                            DataKind::Active { mem, offset: _ } => {
+                                if module.get_memory(mem).is_none() {
+                                    println!("!!!");
+                                    return Err(ParseModuleError::Validation(offset,
+                                        ValidatorError::InvalidMemoryIdx));
+                                }
+                            }
+                        }
+                        datas.push(data).unwrap_debug();
                     }
 
                     module.datas = datas.leak();
                 }
 
                 SectionKind::DataCount => {
+                    // @todo: validate.
                     sp.parse_u32()?;
                 }
             }

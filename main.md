@@ -1,6 +1,6 @@
 
 - todo:
-    - pass most new tests.
+    - trap tests.
     - table get/set.
     - unified stack.
     - reader expectn err(eof: bool).
@@ -17,6 +17,10 @@
 
 
 - backlog:
+    - validation:
+        - duplicate exports.
+        - memory <= 4gib.
+        - data count section.
     - wasm-testsuite imports.
     - typed global api.
     - wat parser.
