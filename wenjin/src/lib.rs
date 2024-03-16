@@ -20,6 +20,7 @@ pub enum Error {
 }
 
 
+pub use wasm;
 pub use value::Value;
 pub use store::RefValue;
 pub use table::Table;

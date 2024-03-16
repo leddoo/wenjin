@@ -1,6 +1,6 @@
 
 - todo:
-    - validation tests.
+    - pass most new tests.
     - validate non-code sections (incl elem, data).
         - (debug) asserts in store.
     - table get/set.

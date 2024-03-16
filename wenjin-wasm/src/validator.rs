@@ -27,6 +27,8 @@ pub enum ValidatorError {
     SelectUnexpectedRefType,
     SelectTypeMismatch(ValueType, ValueType),
     GlobalNotMutable,
+    AlignTooLarge,
+    LoadStoreRefType,
     OOM,
     Todo,
 }
@@ -293,15 +295,37 @@ impl<'a> Validator<'a> {
 
 
     #[inline]
-    fn load(&mut self, ty: ValueType, _align: u32, _offset: u32) -> Result<(), ValidatorError> {
-        // @todo: validate alignment.
+    fn check_load_store(ty: ValueType, align: u32, max_align: u32) -> Result<(), ValidatorError> {
+        match ty {
+            ValueType::I32 | ValueType::I64 |
+            ValueType::F32 | ValueType::F64 |
+            ValueType::V128 => (),
+
+            ValueType::FuncRef |
+            ValueType::ExternRef => return Err(ValidatorError::LoadStoreRefType)
+        };
+
+        let Some(align) = 1u32.checked_shl(align) else {
+            return Err(ValidatorError::AlignTooLarge);
+        };
+
+        if align > max_align {
+            return Err(ValidatorError::AlignTooLarge);
+        }
+
+        return Ok(());
+    }
+
+    #[inline]
+    fn load(&mut self, ty: ValueType, align: u32, _offset: u32, max_align: u32) -> Result<(), ValidatorError> {
+        Self::check_load_store(ty, align, max_align)?;
         self.expect(ValueType::I32)?;
         self.push(ty)
     }
 
     #[inline]
-    fn store(&mut self, ty: ValueType, _align: u32, _offset: u32) -> Result<(), ValidatorError> {
-        // @todo: validate alignment.
+    fn store(&mut self, ty: ValueType, align: u32, _offset: u32, max_align: u32) -> Result<(), ValidatorError> {
+        Self::check_load_store(ty, align, max_align)?;
         self.expect(ty)?;
         self.expect(ValueType::I32)
     }
@@ -540,95 +564,95 @@ impl<'a> OperatorVisitor<'a> for Validator<'a> {
     }
 
     fn visit_i32_load(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.load(ValueType::I32, align, offset)
+        self.load(ValueType::I32, align, offset, 4)
     }
 
     fn visit_i64_load(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.load(ValueType::I64, align, offset)
+        self.load(ValueType::I64, align, offset, 8)
     }
 
     fn visit_f32_load(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.load(ValueType::F32, align, offset)
+        self.load(ValueType::F32, align, offset, 4)
     }
 
     fn visit_f64_load(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.load(ValueType::F64, align, offset)
+        self.load(ValueType::F64, align, offset, 8)
     }
 
     fn visit_i32_load8_s(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.load(ValueType::I32, align, offset)
+        self.load(ValueType::I32, align, offset, 1)
     }
 
     fn visit_i32_load8_u(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.load(ValueType::I32, align, offset)
+        self.load(ValueType::I32, align, offset, 1)
     }
 
     fn visit_i32_load16_s(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.load(ValueType::I32, align, offset)
+        self.load(ValueType::I32, align, offset, 2)
     }
 
     fn visit_i32_load16_u(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.load(ValueType::I32, align, offset)
+        self.load(ValueType::I32, align, offset, 2)
     }
 
     fn visit_i64_load8_s(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.load(ValueType::I64, align, offset)
+        self.load(ValueType::I64, align, offset, 1)
     }
 
     fn visit_i64_load8_u(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.load(ValueType::I64, align, offset)
+        self.load(ValueType::I64, align, offset, 1)
     }
 
     fn visit_i64_load16_s(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.load(ValueType::I64, align, offset)
+        self.load(ValueType::I64, align, offset, 2)
     }
 
     fn visit_i64_load16_u(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.load(ValueType::I64, align, offset)
+        self.load(ValueType::I64, align, offset, 2)
     }
 
     fn visit_i64_load32_s(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.load(ValueType::I64, align, offset)
+        self.load(ValueType::I64, align, offset, 4)
     }
 
     fn visit_i64_load32_u(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.load(ValueType::I64, align, offset)
+        self.load(ValueType::I64, align, offset, 4)
     }
 
     fn visit_i32_store(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.store(ValueType::I32, align, offset)
+        self.store(ValueType::I32, align, offset, 4)
     }
 
     fn visit_i64_store(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.store(ValueType::I64, align, offset)
+        self.store(ValueType::I64, align, offset, 8)
     }
 
     fn visit_f32_store(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.store(ValueType::F32, align, offset)
+        self.store(ValueType::F32, align, offset, 4)
     }
 
     fn visit_f64_store(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.store(ValueType::F64, align, offset)
+        self.store(ValueType::F64, align, offset, 8)
     }
 
     fn visit_i32_store8(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.store(ValueType::I32, align, offset)
+        self.store(ValueType::I32, align, offset, 1)
     }
 
     fn visit_i32_store16(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.store(ValueType::I32, align, offset)
+        self.store(ValueType::I32, align, offset, 2)
     }
 
     fn visit_i64_store8(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.store(ValueType::I64, align, offset)
+        self.store(ValueType::I64, align, offset, 1)
     }
 
     fn visit_i64_store16(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.store(ValueType::I64, align, offset)
+        self.store(ValueType::I64, align, offset, 2)
     }
 
     fn visit_i64_store32(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.store(ValueType::I64, align, offset)
+        self.store(ValueType::I64, align, offset, 4)
     }
 
     fn visit_i32_const(&mut self, _value: i32) -> Self::Output {

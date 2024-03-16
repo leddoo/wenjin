@@ -110,12 +110,20 @@ fn convert(wast: &str) -> (Vec<u8>, Vec<Vec<u8>>) {
                 modules.push(wasm);
             }
 
-            WD::AssertMalformed { span: _, module: _, message: _ } => {
-                println!("skip assert malformed");
+            WD::AssertMalformed { span: _, module, message } => {
+                // @todo: push_module & wat support,
+                //  cause wast's encoder helpfully can't encode malformed modules.
+                let wasm = module.encode().unwrap_or_else(|_| vec![]);
+                output.push(0x02);
+                push_bytes(&mut output, &wasm);
+                push_bytes(&mut output, message.as_bytes());
             }
 
-            WD::AssertInvalid { span: _, module: _, message: _ } => {
-                println!("skip assert invalid");
+            WD::AssertInvalid { span: _, module, message } => {
+                let wasm = module.encode().unwrap();
+                output.push(0x03);
+                push_bytes(&mut output, &wasm);
+                push_bytes(&mut output, message.as_bytes());
             }
 
             WD::Register { span: _, name: _, module: _ } => {

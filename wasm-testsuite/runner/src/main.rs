@@ -180,6 +180,10 @@ fn main() {
             reader.next_n(len).unwrap()
         }
 
+        fn read_string<'a>(reader: &mut Reader<'a, u8>) -> &'a str {
+            core::str::from_utf8(read_bytes(reader)).unwrap()
+        }
+
         fn read_value(reader: &mut Reader<u8>) -> Value {
             match reader.next().unwrap() {
                 0x7f => Value::I32(i32::from_le_bytes(reader.next_array().unwrap())),
@@ -191,6 +195,8 @@ fn main() {
         }
 
         let mut module_idx = 0;
+        let mut malformed_idx = 0;
+        let mut invalid_idx = 0;
         let mut instance = None;
 
         while let Some(op) = reader.next() {
@@ -207,8 +213,66 @@ fn main() {
                     instance = Some(inst);
                 }
 
+                0x02 => {
+                    let idx = malformed_idx;
+                    malformed_idx += 1;
+
+                    let wasm = read_bytes(&mut reader);
+                    module_size += wasm.len();
+
+                    let message = read_string(&mut reader);
+
+                    num_tests += 1;
+                    let Err(wenjin::Error::Parse(e)) = store.new_module(wasm) else {
+                        println!("module should be malformed {idx} with error {message:?}");
+                        continue;
+                    };
+                    println!("check {idx} {:?} {:?}", message, e);
+                }
+
+                0x03 => {
+                    let idx = invalid_idx;
+                    invalid_idx += 1;
+
+                    let wasm = read_bytes(&mut reader);
+                    module_size += wasm.len();
+
+                    let message = read_string(&mut reader);
+
+                    num_tests += 1;
+                    let Err(wenjin::Error::Validation(_, e)) = store.new_module(wasm) else {
+                        println!("module should be invalid {idx} with error {message:?}");
+                        continue;
+                    };
+
+                    use wenjin::wasm::ValidatorError as E;
+                    match (message, e) {
+                        ("alignment must not be larger than natural", E::AlignTooLarge) |
+                        ("type mismatch",
+                         E::TypeMismatch { expected: _, found: _ } |
+                         E::StackUnderflow |
+                         E::FrameExtraStack |
+                         E::BrTableInvalidTargetTypes { label: _ }) |
+                        ("unknown label", E::InvalidLabel) |
+                        ("unknown type", E::InvalidTypeIdx) |
+                        ("unknown function", E::InvalidFuncIdx) |
+                        ("unknown table", E::InvalidTableIdx) |
+                        ("unknown memory", E::InvalidMemoryIdx) |
+                        ("unknown global", E::InvalidGlobalIdx)
+                        => {
+                            num_successes += 1;
+                        }
+
+                        _ => {
+                            println!("incorrect validation error {idx}");
+                            println!("  {e:?}");
+                            println!("  expected {message:?}");
+                        }
+                    }
+                }
+
                 0x05 => {
-                    let name = core::str::from_utf8(read_bytes(&mut reader)).unwrap();
+                    let name = read_string(&mut reader);
 
                     let num_args = read_usize(&mut reader);
                     let args = Vec::from_iter((0..num_args).map(|_| { read_value(&mut reader) }));
