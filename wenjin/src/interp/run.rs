@@ -1449,7 +1449,7 @@ impl Store {
                             let Some(src_end) = src.checked_add(n) else {
                                 vm_err!(Error::TrapMemoryBounds);
                             };
-                            let Some(dst_end) = src.checked_add(n) else {
+                            let Some(dst_end) = dst.checked_add(n) else {
                                 vm_err!(Error::TrapMemoryBounds);
                             };
                             if src_end > state.memory_size || dst_end > state.memory_size {

@@ -1,6 +1,5 @@
 
 - todo:
-    - fix trap bugs.
     - exhaustion tests.
     - unified stack.
     - clone the wasm (cause we have dangling refs).
@@ -21,6 +20,7 @@
     - make ids wasmtype/ctype.
     - granular mem string utils, tests.
     - proper parse error sources.
+    - div & conversion traps.
 
 - robustness:
     - traps & host funcs.
