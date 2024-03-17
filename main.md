@@ -1,13 +1,9 @@
 
 - todo:
-    - trap tests.
+    - fix trap bugs.
+    - exhaustion tests.
     - unified stack.
-    - global api.
-        - `caller_global(name)`?
-    - rest of the owl:
-        - clone the wasm (cause we have dangling refs).
-        - non-func imports.
-        - pass remaining tests.
+    - clone the wasm (cause we have dangling refs).
     - debugging.
     - mutable instances.
         - generational indices.
@@ -19,6 +15,7 @@
         - memory <= 4gib.
         - data count section.
     - table get/set.
+    - caller-global?
     - typed global api.
     - wat parser.
     - make ids wasmtype/ctype.
@@ -26,6 +23,7 @@
     - proper parse error sources.
 
 - robustness:
+    - traps & host funcs.
     - is there a `loop.params-shifter`-like validation test with an invalid push (type) in the loop?
     - static assert little endian for ctype?
     - test multi-level func vars, occurs check.

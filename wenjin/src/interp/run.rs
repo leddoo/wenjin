@@ -139,21 +139,29 @@ impl State {
     }
 
     #[inline]
-    fn load<const N: usize>(&mut self, addr: u32, offset: u32) -> Option<[u8; N]> {
+    fn mem_bounds_check(&self, addr: u32, offset: u32, size: u32) -> Result<(), Error> {
         // check addr+offset+N <= memory_size
-        let end = addr.checked_add(offset)?.checked_add(N as u32)?;
-        if end as usize > self.memory_size {
-            return None;
+        if let Some(x) = addr.checked_add(offset) {
+            if let Some(end) = x.checked_add(size) {
+                if end as usize <= self.memory_size {
+                    return Ok(())
+                }
+            }
         }
+        return Err(Error::TrapMemoryBounds);
+    }
 
+    #[inline]
+    fn load<const N: usize>(&mut self, addr: u32, offset: u32) -> Result<[u8; N], Error> {
+        self.mem_bounds_check(addr, offset, N as u32)?;
         unsafe {
             let ptr = self.memory.add((addr + offset) as usize);
-            Some(ptr.cast::<[u8; N]>().read())
+            Ok(ptr.cast::<[u8; N]>().read())
         }
     }
 
     #[inline]
-    fn load_op<const N: usize>(&mut self) -> Option<[u8; N]> {
+    fn load_op<const N: usize>(&mut self) -> Result<[u8; N], Error> {
         let offset = self.next_u32();
         let addr = self.pop().as_i32() as u32;
         self.load(addr, offset)
@@ -161,23 +169,18 @@ impl State {
 
     #[must_use]
     #[inline]
-    fn store<const N: usize>(&mut self, addr: u32, offset: u32, value: [u8; N]) -> Option<()> {
-        // check addr+offset+N <= memory_size
-        let end = addr.checked_add(offset)?.checked_add(N as u32)?;
-        if end as usize > self.memory_size {
-            return None;
-        }
-
+    fn store<const N: usize>(&mut self, addr: u32, offset: u32, value: [u8; N]) -> Result<(), Error> {
+        self.mem_bounds_check(addr, offset, N as u32)?;
         unsafe {
             let ptr = self.memory.add((addr + offset) as usize);
             ptr.cast::<[u8; N]>().write(value);
-            Some(())
+            Ok(())
         }
     }
 
     #[must_use]
     #[inline]
-    fn store_op<const N: usize>(&mut self, value: [u8; N]) -> Option<()> {
+    fn store_op<const N: usize>(&mut self, value: [u8; N]) -> Result<(), Error> {
         let offset = self.next_u32();
         let addr = self.pop().as_i32() as u32;
         self.store(addr, offset, value)
@@ -185,7 +188,9 @@ impl State {
 }
 
 impl Store {
-    pub(crate) fn run_interp(&mut self, init_func: u32) -> Result<(), Error> {
+    pub(crate) fn run_interp(&mut self, init_func: u32) -> (Result<(), Error>,) {
+        assert!(!self.thread.trapped);
+
         let mut state = unsafe {
             let func = &self.funcs[init_func as usize];
             let FuncKind::Interp(f) = &func.kind else { unreachable!() };
@@ -222,7 +227,9 @@ impl Store {
             }
 
 
-            self.thread.frames.push_or_alloc(None).map_err(|_| Error::OOM)?;
+            if let Err(()) = self.thread.frames.push_or_alloc(None) {
+                todo!()
+            }
 
             State {
                 instance: f.instance,
@@ -241,11 +248,26 @@ impl Store {
             }
         };
 
-        loop {
+        let e = 'err: loop {
+            macro_rules! vm_err {
+                ($e:expr) => {
+                    break 'err $e;
+                };
+            }
+
+            macro_rules! vm_try {
+                ($e:expr) => {
+                    match $e {
+                        Ok(r) => r,
+                        Err(e) => break 'err e,
+                    }
+                };
+            }
+
             let op = state.next_u8();
             match op {
                 wasm::opcode::UNREACHABLE => {
-                    return Err(Error::Unreachable);
+                    vm_err!(Error::TrapUnreachable);
                 }
 
                 wasm::opcode::NOP => {}
@@ -351,7 +373,7 @@ impl Store {
                         let stack = &mut self.thread.stack;
                         stack.set_len(sp.offset_from(stack.as_ptr()) as usize);
 
-                        return Ok(())
+                        return (Ok(()),);
                     }
                 }
 
@@ -363,14 +385,28 @@ impl Store {
                         inst.funcs[func_idx as usize]
                     }
                     else {
-                        let _type_idx = state.next_u32();
+                        let type_idx = state.next_u32();
                         let tab_idx = state.next_u32();
                         let i = state.pop().as_i32() as usize;
 
                         let inst = &self.instances[state.instance as usize];
                         let tab_idx = inst.tables[tab_idx as usize];
                         let tab = Table::new(&self.tables[tab_idx as usize]);
-                        tab.as_slice()[i].id
+
+                        let Some(id) = tab.as_slice().get(i) else {
+                            vm_err!(Error::TrapTableBounds);
+                        };
+                        let Some(func_id) = id.to_option() else {
+                            vm_err!(Error::TrapCallIndirectRefNull);
+                        };
+
+                        let module = &self.modules[inst.module as usize];
+                        let expected_ty = module.wasm.types[type_idx as usize];
+                        if self.funcs[func_id as usize].ty != expected_ty {
+                            vm_err!(Error::TrapCallIndirectTypeMismatch);
+                        }
+
+                        func_id
                     };
 
                     let mut func = &self.funcs[func_id as usize];
@@ -567,126 +603,126 @@ impl Store {
                 }
 
                 wasm::opcode::TABLE_GET => {
-                    return Err(Error::Unimplemented);
+                    vm_err!(Error::Unimplemented);
                 }
 
                 wasm::opcode::TABLE_SET => {
-                    return Err(Error::Unimplemented);
+                    vm_err!(Error::Unimplemented);
                 }
 
                 wasm::opcode::I32_LOAD => {
-                    let Some(v) = state.load_op() else { todo!() };
+                    let v = vm_try!(state.load_op());
                     state.push(StackValue::from_i32(i32::from_le_bytes(v)));
                 }
 
                 wasm::opcode::I64_LOAD => {
-                    let Some(v) = state.load_op() else { todo!() };
+                    let v = vm_try!(state.load_op());
                     state.push(StackValue::from_i64(i64::from_le_bytes(v)));
                 }
 
                 wasm::opcode::F32_LOAD => {
-                    let Some(v) = state.load_op() else { todo!() };
+                    let v = vm_try!(state.load_op());
                     state.push(StackValue::from_f32(f32::from_le_bytes(v)));
                 }
 
                 wasm::opcode::F64_LOAD => {
-                    let Some(v) = state.load_op() else { todo!() };
+                    let v = vm_try!(state.load_op());
                     state.push(StackValue::from_f64(f64::from_le_bytes(v)));
                 }
 
                 wasm::opcode::I32_LOAD8_S => {
-                    let Some(v) = state.load_op() else { todo!() };
+                    let v = vm_try!(state.load_op());
                     state.push(StackValue::from_i32(i8::from_le_bytes(v) as i32));
                 }
 
                 wasm::opcode::I32_LOAD8_U => {
-                    let Some(v) = state.load_op() else { todo!() };
+                    let v = vm_try!(state.load_op());
                     state.push(StackValue::from_i32(u8::from_le_bytes(v) as i32));
                 }
 
                 wasm::opcode::I32_LOAD16_S => {
-                    let Some(v) = state.load_op() else { todo!() };
+                    let v = vm_try!(state.load_op());
                     state.push(StackValue::from_i32(i16::from_le_bytes(v) as i32));
                 }
 
                 wasm::opcode::I32_LOAD16_U => {
-                    let Some(v) = state.load_op() else { todo!() };
+                    let v = vm_try!(state.load_op());
                     state.push(StackValue::from_i32(u16::from_le_bytes(v) as i32));
                 }
 
                 wasm::opcode::I64_LOAD8_S => {
-                    let Some(v) = state.load_op() else { todo!() };
+                    let v = vm_try!(state.load_op());
                     state.push(StackValue::from_i64(i8::from_le_bytes(v) as i64));
                 }
 
                 wasm::opcode::I64_LOAD8_U => {
-                    let Some(v) = state.load_op() else { todo!() };
+                    let v = vm_try!(state.load_op());
                     state.push(StackValue::from_i64(u8::from_le_bytes(v) as i64));
                 }
 
                 wasm::opcode::I64_LOAD16_S => {
-                    let Some(v) = state.load_op() else { todo!() };
+                    let v = vm_try!(state.load_op());
                     state.push(StackValue::from_i64(i16::from_le_bytes(v) as i64));
                 }
 
                 wasm::opcode::I64_LOAD16_U => {
-                    let Some(v) = state.load_op() else { todo!() };
+                    let v = vm_try!(state.load_op());
                     state.push(StackValue::from_i64(u16::from_le_bytes(v) as i64));
                 }
 
                 wasm::opcode::I64_LOAD32_S => {
-                    let Some(v) = state.load_op() else { todo!() };
+                    let v = vm_try!(state.load_op());
                     state.push(StackValue::from_i64(i32::from_le_bytes(v) as i64));
                 }
 
                 wasm::opcode::I64_LOAD32_U => {
-                    let Some(v) = state.load_op() else { todo!() };
+                    let v = vm_try!(state.load_op());
                     state.push(StackValue::from_i64(u32::from_le_bytes(v) as i64));
                 }
 
                 wasm::opcode::I32_STORE => {
                     let v = state.pop().as_i32();
-                    let Some(()) = state.store_op(v.to_le_bytes()) else { todo!() };
+                    vm_try!(state.store_op(v.to_le_bytes()));
                 }
 
                 wasm::opcode::I64_STORE => {
                     let v = state.pop().as_i64();
-                    let Some(()) = state.store_op(v.to_le_bytes()) else { todo!() };
+                    vm_try!(state.store_op(v.to_le_bytes()));
                 }
 
                 wasm::opcode::F32_STORE => {
                     let v = state.pop().as_f32();
-                    let Some(()) = state.store_op(v.to_le_bytes()) else { todo!() };
+                    vm_try!(state.store_op(v.to_le_bytes()));
                 }
 
                 wasm::opcode::F64_STORE => {
                     let v = state.pop().as_f64();
-                    let Some(()) = state.store_op(v.to_le_bytes()) else { todo!() };
+                    vm_try!(state.store_op(v.to_le_bytes()));
                 }
 
                 wasm::opcode::I32_STORE8 => {
                     let v = state.pop().as_i32() as u8;
-                    let Some(()) = state.store_op(v.to_le_bytes()) else { todo!() };
+                    vm_try!(state.store_op(v.to_le_bytes()));
                 }
 
                 wasm::opcode::I32_STORE16 => {
                     let v = state.pop().as_i32() as u16;
-                    let Some(()) = state.store_op(v.to_le_bytes()) else { todo!() };
+                    vm_try!(state.store_op(v.to_le_bytes()));
                 }
 
                 wasm::opcode::I64_STORE8 => {
                     let v = state.pop().as_i64() as u8;
-                    let Some(()) = state.store_op(v.to_le_bytes()) else { todo!() };
+                    vm_try!(state.store_op(v.to_le_bytes()));
                 }
 
                 wasm::opcode::I64_STORE16 => {
                     let v = state.pop().as_i64() as u16;
-                    let Some(()) = state.store_op(v.to_le_bytes()) else { todo!() };
+                    vm_try!(state.store_op(v.to_le_bytes()));
                 }
 
                 wasm::opcode::I64_STORE32 => {
                     let v = state.pop().as_i64() as u32;
-                    let Some(()) = state.store_op(v.to_le_bytes()) else { todo!() };
+                    vm_try!(state.store_op(v.to_le_bytes()));
                 }
 
                 wasm::opcode::MEMORY_SIZE => {
@@ -933,7 +969,7 @@ impl Store {
                 wasm::opcode::I32_DIV_S => {
                     let (b, a) = (state.pop().as_i32(), state.pop().as_i32());
                     if b == 0 {
-                        todo!()
+                        vm_err!(Error::TrapDivZero);
                     }
                     state.push(StackValue::from_i32(a.wrapping_div(b)));
                 }
@@ -941,7 +977,7 @@ impl Store {
                 wasm::opcode::I32_DIV_U => {
                     let (b, a) = (state.pop().as_i32() as u32, state.pop().as_i32() as u32);
                     if b == 0 {
-                        todo!()
+                        vm_err!(Error::TrapDivZero);
                     }
                     state.push(StackValue::from_i32(a.wrapping_div(b) as i32));
                 }
@@ -949,7 +985,7 @@ impl Store {
                 wasm::opcode::I32_REM_S => {
                     let (b, a) = (state.pop().as_i32(), state.pop().as_i32());
                     if b == 0 {
-                        todo!()
+                        vm_err!(Error::TrapDivZero);
                     }
                     state.push(StackValue::from_i32(a.wrapping_rem(b)));
                 }
@@ -957,7 +993,7 @@ impl Store {
                 wasm::opcode::I32_REM_U => {
                     let (b, a) = (state.pop().as_i32() as u32, state.pop().as_i32() as u32);
                     if b == 0 {
-                        todo!()
+                        vm_err!(Error::TrapDivZero);
                     }
                     state.push(StackValue::from_i32(a.wrapping_rem(b) as i32));
                 }
@@ -1035,7 +1071,7 @@ impl Store {
                 wasm::opcode::I64_DIV_S => {
                     let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
                     if b == 0 {
-                        todo!()
+                        vm_err!(Error::TrapDivZero);
                     }
                     state.push(StackValue::from_i64(a.wrapping_div(b)));
                 }
@@ -1043,7 +1079,7 @@ impl Store {
                 wasm::opcode::I64_DIV_U => {
                     let (b, a) = (state.pop().as_i64() as u64, state.pop().as_i64() as u64);
                     if b == 0 {
-                        todo!()
+                        vm_err!(Error::TrapDivZero);
                     }
                     state.push(StackValue::from_i64(a.wrapping_div(b) as i64));
                 }
@@ -1051,7 +1087,7 @@ impl Store {
                 wasm::opcode::I64_REM_S => {
                     let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
                     if b == 0 {
-                        todo!()
+                        vm_err!(Error::TrapDivZero);
                     }
                     state.push(StackValue::from_i64(a.wrapping_rem(b)));
                 }
@@ -1059,7 +1095,7 @@ impl Store {
                 wasm::opcode::I64_REM_U => {
                     let (b, a) = (state.pop().as_i64() as u64, state.pop().as_i64() as u64);
                     if b == 0 {
-                        todo!()
+                        vm_err!(Error::TrapDivZero);
                     }
                     state.push(StackValue::from_i64(a.wrapping_rem(b) as i64));
                 }
@@ -1394,7 +1430,7 @@ impl Store {
                 }
 
                 wasm::opcode::REF_FUNC => {
-                    return Err(Error::Unimplemented);
+                    vm_err!(Error::Unimplemented);
                 }
 
                 0xfc => {
@@ -1403,16 +1439,22 @@ impl Store {
                         wasm::opcode::xfc::MEMORY_COPY => {
                             let (dst_mem, src_mem) = (state.next_u32(), state.next_u32());
                             if dst_mem != 0 || src_mem != 0 {
-                                return Err(Error::Unimplemented);
+                                vm_err!(Error::Unimplemented);
                             }
 
                             let n = state.pop().as_i32() as usize;
                             let src = state.pop().as_i32() as usize;
                             let dst = state.pop().as_i32() as usize;
 
-                            let Some(src_end) = src.checked_add(n) else { todo!() };
-                            let Some(dst_end) = src.checked_add(n) else { todo!() };
-                            if src_end > state.memory_size || dst_end > state.memory_size { todo!() }
+                            let Some(src_end) = src.checked_add(n) else {
+                                vm_err!(Error::TrapMemoryBounds);
+                            };
+                            let Some(dst_end) = src.checked_add(n) else {
+                                vm_err!(Error::TrapMemoryBounds);
+                            };
+                            if src_end > state.memory_size || dst_end > state.memory_size {
+                                vm_err!(Error::TrapMemoryBounds);
+                            }
 
                             unsafe {
                                 core::ptr::copy(state.memory.add(src), state.memory.add(dst), n);
@@ -1422,15 +1464,19 @@ impl Store {
                         wasm::opcode::xfc::MEMORY_FILL => {
                             let mem = state.next_u32();
                             if mem != 0 {
-                                return Err(Error::Unimplemented);
+                                vm_err!(Error::Unimplemented);
                             }
 
                             let n = state.pop().as_i32() as usize;
                             let v = state.pop().as_i32() as u8;
                             let dst = state.pop().as_i32() as usize;
 
-                            let Some(dst_end) = dst.checked_add(n) else { todo!() };
-                            if dst_end > state.memory_size { todo!() }
+                            let Some(dst_end) = dst.checked_add(n) else {
+                                vm_err!(Error::TrapMemoryBounds);
+                            };
+                            if dst_end > state.memory_size {
+                                vm_err!(Error::TrapMemoryBounds);
+                            }
 
                             unsafe {
                                 core::ptr::write_bytes(state.memory.add(dst), v, n);
@@ -1443,7 +1489,10 @@ impl Store {
 
                 _ => unreachable!()
             }
-        }
+        };
+
+        self.thread.trapped = true;
+        return (Err(e),);
     }
 }
 

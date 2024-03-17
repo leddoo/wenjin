@@ -366,8 +366,50 @@ fn main() {
                     }
                 }
 
+                0x06 => {
+                    let name = read_string(&mut reader);
+
+                    let num_args = read_usize(&mut reader);
+                    let args = Vec::from_iter((0..num_args).map(|_| { read_value(&mut reader) }));
+
+                    let message = read_string(&mut reader);
+
+                    let Some(inst) = instance else {
+                        println!("skipping assert_trap (missing instance)");
+                        num_skipped += 1;
+                        continue;
+                    };
+                    let func = store.get_export_func_dyn(inst, name).unwrap();
+
+                    num_tests += 1;
+                    let result = store.call_dyn_ex(func, &args, &mut [], true);
+                    let Err(e) = result else {
+                        println!("failure: trap expected for {name}({args:?}) with error {message:?}");
+                        continue;
+                    };
+
+                    use wenjin::Error as E;
+                    match (message, e) {
+                        ("unreachable", E::TrapUnreachable) |
+                        ("out of bounds memory access", E::TrapMemoryBounds) |
+                        ("integer divide by zero", E::TrapDivZero) |
+                        ("undefined element", E::TrapTableBounds) |
+                        ("indirect call type mismatch", E::TrapCallIndirectTypeMismatch) |
+                        ("uninitialized element", E::TrapCallIndirectRefNull)
+                        => {
+                            num_successes += 1;
+                        }
+
+                        _ => {
+                            println!("failure: incorrect trap for {name}({args:?})");
+                            println!("  {e:?}");
+                            println!("  expected {message:?}");
+                        }
+                    }
+                }
+
                 0x07 => {
-                    let name = core::str::from_utf8(read_bytes(&mut reader)).unwrap();
+                    let name = read_string(&mut reader);
 
                     let num_args = read_usize(&mut reader);
                     let args = Vec::from_iter((0..num_args).map(|_| { read_value(&mut reader) }));

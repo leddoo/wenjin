@@ -54,6 +54,12 @@ impl RefValue {
     pub fn is_null(self) -> bool {
         self.id == u32::MAX
     }
+
+    #[inline(always)]
+    pub fn to_option(self) -> Option<u32> {
+        if self.id == u32::MAX { None }
+        else { Some(self.id) }
+    }
 }
 
 
@@ -221,6 +227,7 @@ pub(crate) struct StackFrame {
 pub(crate) struct ThreadData {
     pub stack: ManualVec<StackValue>,
     pub frames: ManualVec<Option<StackFrame>>,
+    pub trapped: bool,
 }
 
 impl Store {
@@ -235,6 +242,7 @@ impl Store {
             thread: ThreadData {
                 stack: ManualVec::new(),
                 frames: ManualVec::new(),
+                trapped: false,
             },
         }
     }
@@ -566,7 +574,7 @@ impl Store {
         return Ok(glob);
     }
 
-    pub fn call_dyn<'r>(&mut self, func_id: FuncId, args: &[Value], rets: &'r mut [Value]) -> Result<&'r mut [Value], Error> {
+    pub fn call_dyn_ex<'r>(&mut self, func_id: FuncId, args: &[Value], rets: &'r mut [Value], allow_rets_mismatch: bool) -> Result<&'r mut [Value], Error> {
         let func = self.funcs.get(func_id.id as usize).ok_or_else(|| todo!())?;
 
         // @todo: this may not be safe in the future.
@@ -584,10 +592,12 @@ impl Store {
             }
         }
 
-        if rets.len() != ty.rets.len() {
+        if !allow_rets_mismatch && rets.len() != ty.rets.len() {
             todo!()
         }
 
+
+        let is_root = self.thread.frames.len() == 0;
 
         // push args onto stack.
         let bp = self.thread.stack.len();
@@ -596,17 +606,29 @@ impl Store {
             self.thread.stack.push(StackValue::from_value(*arg)).unwrap_debug();
         }
 
-        self.run_func(func_id.id)?;
+        if let Err(e) = self.run_func(func_id.id) {
+            if is_root {
+                self.thread.stack.clear();
+                self.thread.frames.clear();
+                self.thread.trapped = false;
+            }
+            return Err(e);
+        }
 
         debug_assert_eq!(self.thread.stack.len(), bp + ty.rets.len());
 
         // pop rets from stack.
-        for i in 0..ty.rets.len() {
+        let num_rets = ty.rets.len().min(rets.len());
+        for i in 0..num_rets {
             rets[i] = self.thread.stack[bp + i].to_value(ty.rets[i]);
         }
         self.thread.stack.truncate(bp);
 
-        return Ok(rets);
+        return Ok(&mut rets[..num_rets]);
+    }
+
+    pub fn call_dyn<'r>(&mut self, func_id: FuncId, args: &[Value], rets: &'r mut [Value]) -> Result<&'r mut [Value], Error> {
+        self.call_dyn_ex(func_id, args, rets, false)
     }
 
     // @todo: debug check types.
@@ -639,6 +661,8 @@ impl Store {
     fn run_func(&mut self, id: u32) -> Result<(), Error> {
         let stack = &mut self.thread.stack;
 
+        let old_num_frames = self.thread.frames.len();
+
         let mut id = id;
         let mut func = &self.funcs[id as usize];
         while let FuncKind::Var(ref_id) = func.kind {
@@ -646,10 +670,11 @@ impl Store {
             id = ref_id;
             func = &self.funcs[ref_id as usize];
         }
-        match &func.kind {
+
+        let result = match &func.kind {
             FuncKind::Interp(f) => {
                 debug_assert!(stack.len() >= f.num_params as usize);
-                self.run_interp(id)
+                self.run_interp(id).0
             }
 
             FuncKind::Host(f) => {
@@ -659,7 +684,13 @@ impl Store {
             }
 
             FuncKind::Var(_) => unreachable!()
+        };
+
+        if !self.thread.trapped {
+            debug_assert_eq!(self.thread.frames.len(), old_num_frames);
         }
+
+        return result;
     }
 
     pub fn new_host_func<P: WasmTypes, R: WasmTypes, const STORE: bool, H: HostFunc<P, R, STORE>>

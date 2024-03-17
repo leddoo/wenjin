@@ -138,8 +138,32 @@ fn convert(wast: &str) -> (Vec<u8>, Vec<Vec<u8>>) {
                 }
             }
 
-            WD::AssertTrap { span: _, exec: _, message: _ } => {
-                println!("skip assert trap");
+            WD::AssertTrap { span: _, exec, message } => {
+                match exec {
+                    wast::WastExecute::Invoke(invoke) => {
+                        if invoke.module.is_some() {
+                            println!("skip assert trap (module id)");
+                        }
+                        else {
+                            let mut cmd = vec![];
+                            cmd.push(0x06);
+                            if push_invoke(&mut cmd, invoke).is_ok() {
+                                push_bytes(&mut cmd, message.as_bytes());
+                                output.extend_from_slice(&cmd);
+                            }
+                        }
+                    }
+
+                    wast::WastExecute::Wat(_) => {
+                        println!("skip assert trap (wat)");
+                        continue;
+                    }
+
+                    wast::WastExecute::Get { module: _, global: _ } => {
+                        println!("skip assert trap (global)");
+                        continue;
+                    }
+                }
             }
 
             WD::AssertReturn { span: _, exec, results } => {
