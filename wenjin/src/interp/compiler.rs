@@ -92,8 +92,12 @@ impl<'a> Compiler<'a> {
         self.begin_unreachable = false;
         self.max_stack = 0;
         self.max_align = 0;
-        let num_rets = self.module.types[ty as usize].rets.len() as u32;
-        self.push_frame_core(FrameKind::Block { after: u32::MAX }, 0, num_rets, 0);
+        self.push_frame_core(Frame {
+            kind: FrameKind::Block { after: u32::MAX },
+            height: 0,
+            num_params: 0,
+            num_rets: self.module.types[ty as usize].rets.len() as u32,
+        });
         return Ok(());
     }
 
@@ -178,21 +182,18 @@ impl<'a> Compiler<'a> {
     fn push_frame(&mut self, kind: FrameKind, ty: BlockType, pop: u32) {
         let num_params = ty.begin_types(self.module).len() as u32;
         let num_rets = ty.end_types(self.module).len() as u32;
-        self.push_frame_core(kind, num_params, num_rets, pop);
+        let height = self.begin_stack - if !self.begin_unreachable { num_params + pop } else { 0 };
+        self.push_frame_core(Frame { kind, height, num_params, num_rets });
     }
 
-    fn push_frame_core(&mut self, kind: FrameKind, num_params: u32, num_rets: u32, pop: u32) {
-        //dbg!(self.begin_stack, num_params, pop);
-        let height = if !self.validator.is_unreachable() { self.begin_stack - num_params - pop } else { self.begin_stack };
-        let frame = Frame { kind, height, num_params, num_rets };
+    fn push_frame_core(&mut self, frame: Frame) {
         if self.frames.push_or_alloc(frame).is_err() {
             self.oom = true;
         }
     }
 
-    fn pop_frame_core(&mut self) -> Frame {
-        let frame = self.frames.pop().unwrap();
-        return frame;
+    fn pop_frame(&mut self) -> Frame {
+        self.frames.pop().unwrap()
     }
 
     fn jump(&mut self, label: Label) {
@@ -223,7 +224,6 @@ impl<'a> Compiler<'a> {
         };
         let by =
             if !self.begin_unreachable {
-                //dbg!(self.begin_stack, pop, num, &frame);
                 (self.begin_stack - pop - num) - frame.height
             }
             else { 0 };
@@ -294,7 +294,7 @@ impl<'a> wasm::OperatorVisitor<'a> for Compiler<'a> {
         self.add_byte(opcode::ELSE);
         self.jump_and_shift(0, 0);
 
-        let frame = self.pop_frame_core();
+        let frame = self.pop_frame();
 
         let FrameKind::If { after, else_use } = frame.kind else { panic!("invalid wasm") };
         //self.push_frame_core(FrameKind::Else { after }, frame.num_params, frame.num_rets, 0);
@@ -307,7 +307,7 @@ impl<'a> wasm::OperatorVisitor<'a> for Compiler<'a> {
 
     fn visit_end(&mut self) -> Self::Output {
         self.validator.visit_end()?;
-        let frame = self.pop_frame_core();
+        let frame = self.pop_frame();
 
         let offset = self.code.len() as u32;
         match frame.kind {

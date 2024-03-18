@@ -1,10 +1,6 @@
 
 - todo:
-    - compiler cleanup:
-        - remove frames.
-        - remove oom.
-        - should we do an immutable stack?
-            - could use that for debugging, no need to compute types.
+    - no oom/invalid handle.
     - unified stack.
         - stack compression.
     - put missing end logic into validator (end function).
@@ -13,7 +9,6 @@
 
 - backlog:
     - exhaustion tests.
-    - no oom/invalid handle?
     - validation:
         - duplicate exports.
         - memory <= 4gib.
@@ -30,6 +25,8 @@
     - consider a type table (for optimized callindirect).
     - mutable instances.
         - generational indices.
+    - should we do an immutable stack?
+        - could use that for debugging, no need to compute types.
 
 - robustness:
     - traps & host funcs.
