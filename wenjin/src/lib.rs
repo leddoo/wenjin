@@ -34,7 +34,7 @@ pub use table::Table;
 pub use memory::{Memory, CType, WasmSize, WasmPtr, WasmSlice};
 pub use global::Global;
 pub use typed::{WasmType, WasmTypes, WasmResult};
-pub use store::{Store, TypedFuncId, MemoryId};
+pub use store::{Store, InstanceId, TypedFuncId, MemoryId};
 
 pub use sti::num::ceil_to_multiple_pow2;
 

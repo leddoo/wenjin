@@ -61,7 +61,7 @@ pub fn dump(code: &[u8]) {
             wasm::opcode::BLOCK |
             wasm::opcode::LOOP => (),
             wasm::opcode::IF => { jump(&mut reader); }
-            wasm::opcode::ELSE => {}
+            wasm::opcode::ELSE => { jump(&mut reader); imm_i32(&mut reader); imm_i32(&mut reader) }
             wasm::opcode::END => {}
             wasm::opcode::BR => { jump(&mut reader); imm_i32(&mut reader); imm_i32(&mut reader) }
             wasm::opcode::BR_IF => { jump(&mut reader); imm_i32(&mut reader); imm_i32(&mut reader) }

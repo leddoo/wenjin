@@ -342,7 +342,6 @@ impl Store {
         }
 
 
-        let mut validator = wasm::Validator::new(&module);
         let mut compiler = interp::Compiler::new(&module);
         for (i, code) in module.codes.iter().enumerate() {
             let mut p = wasm::Parser::from_sub_section(&*wasm, code.expr);
@@ -350,46 +349,29 @@ impl Store {
             let ty_idx = module.funcs[i];
             let ty = module.types[module.funcs[i] as usize];
 
-            validator.begin_func(ty_idx, code.locals).unwrap();
-            compiler.begin_func(ty_idx);
+            if 0==1 { println!("{i}") };
+            compiler.begin_func(ty_idx, code.locals)
+                .map_err(|e| Error::Validation(p.reader.offset(), e))?;
 
             while !p.is_done() {
+                if 0==1 { println!("{:?}", p.clone().parse_operator()) }
+
                 let offset = p.reader.offset();
-                let ((), ()) =
-                    p.parse_operator_with(wasm::AndThenOp(&mut validator, &mut compiler))
-                        .map_err(|e| Error::Parse(e))?
-                        .map_err(|e| Error::Validation(offset, e))?;
-
-                debug_assert_eq!(validator.num_stack(), compiler.num_stack());
-                debug_assert_eq!(validator.num_frames(), compiler.num_frames());
-                if validator.num_frames() != 0 {
-                    debug_assert_eq!(validator.is_unreachable(), compiler.is_unreachable());
-                }
+                compiler.begin_operator(offset as u32); // @todo: do/should we ensure wasm size is u32?
+                p.parse_operator_with(&mut compiler)
+                    .map_err(|e| Error::Parse(e))?
+                    .map_err(|e| Error::Validation(offset, e))?;
+                compiler.end_operator();
             }
-            if validator.num_frames() != 0 {
-                return Err(Error::Validation(p.reader.offset(), wasm::ValidatorError::MissingEnd));
-            }
-            assert!(validator.num_stack() == 0
-                && validator.num_frames() == 0
-                && compiler.num_stack() == 0
-                && compiler.num_frames() == 0);
 
-            if 0==1 { println!("{i}"); interp::dump(compiler.peek_code()); }
+            let interp_func = compiler.end_func(instance_id)
+                .map_err(|e| Error::Validation(p.reader.offset(), e))?;
 
             let id = FuncId {
                 id: self.funcs.len().try_into().map_err(|_| Error::OOM)?,
             };
-            let func = Rc::new(UnsafeCell::new(FuncData {
-                id,
-                ty,
-                kind: FuncKind::Interp(InterpFunc {
-                    instance: instance_id,
-                    code: compiler.code(GlobalAlloc).ok_or_else(|| Error::OOM)?,
-                    num_params: ty.params.len() as u32,
-                    num_locals: validator.num_locals(),
-                    stack_size: validator.num_locals() + validator.max_stack(),
-                }),
-            }));
+            let func = Rc::new(UnsafeCell::new(
+                FuncData { id, ty, kind: FuncKind::Interp(interp_func) }));
             funcs.push(func.clone()).unwrap_debug();
             self.funcs.push_or_alloc(func).map_err(|_| Error::OOM)?;
         }

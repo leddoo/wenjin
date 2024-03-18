@@ -44,11 +44,10 @@ pub struct Validator<'a> {
     pub stack_limit: u32,
     pub frame_limit: u32,
 
-    module: &'a Module<'a>,
+    pub module: &'a Module<'a>,
 
     locals: ManualVec<ValueType>,
     stack: ManualVec<ValueType>,
-    max_stack: u32,
     frames: ManualVec<ControlFrame>,
 }
 
@@ -77,14 +76,13 @@ impl<'a> Validator<'a> {
             module,
             locals: ManualVec::new(),
             stack: ManualVec::new(),
-            max_stack: 0,
             frames: ManualVec::new(),
         }
     }
 
     #[inline(always)]
-    pub fn max_stack(&self) -> u32 {
-        self.max_stack
+    pub fn locals(&self) -> &[ValueType] {
+        &self.locals
     }
 
     #[inline(always)]
@@ -121,7 +119,6 @@ impl<'a> Validator<'a> {
         }
 
         self.stack.truncate(0);
-        self.max_stack = 0;
 
         self.frames.truncate(0);
         self.frames.push_or_alloc(ControlFrame {
@@ -131,6 +128,14 @@ impl<'a> Validator<'a> {
             unreachable: false,
         }).map_err(|_| ValidatorError::OOM)?;
 
+        return Ok(());
+    }
+
+    pub fn end_func(&mut self) -> Result<(), ValidatorError> {
+        if self.frames.len() != 0 {
+            return Err(ValidatorError::MissingEnd);
+        }
+        assert_eq!(self.stack.len(), 0);
         return Ok(());
     }
 
@@ -153,7 +158,6 @@ impl<'a> Validator<'a> {
 
             self.stack.push_or_alloc(ty)
                 .map_err(|_| ValidatorError::OOM)?;
-            self.max_stack = self.max_stack.max(self.stack.len() as u32);
         }
         return Ok(());
     }

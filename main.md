@@ -1,24 +1,19 @@
 
 - todo:
-    - reconsider wasm object storage.
-        - do we really want rc?
-        - do we want to expose the rcs (maybe wrapped) externally?
-        - we should probably have some abstraction for the unsafe cell thing.
-    - no oom/invalid handle?
+    - compiler cleanup:
+        - remove frames.
+        - remove oom.
+        - should we do an immutable stack?
+            - could use that for debugging, no need to compute types.
     - unified stack.
-        - compression.
-            - compute max local/push size.
-            - make compiler own validator.
-        - put missing end logic into validator (end function).
-    - consider leb128 or other compression for bytecode operands.
-    - consider a type table (for optimized callindirect).
-    - exhaustion tests.
+        - stack compression.
+    - put missing end logic into validator (end function).
     - debugging.
-    - mutable instances.
-        - generational indices.
 
 
 - backlog:
+    - exhaustion tests.
+    - no oom/invalid handle?
     - validation:
         - duplicate exports.
         - memory <= 4gib.
@@ -31,6 +26,10 @@
     - granular mem string utils, tests.
     - proper parse error sources.
     - div & conversion traps.
+    - consider leb128 or other compression for bytecode operands.
+    - consider a type table (for optimized callindirect).
+    - mutable instances.
+        - generational indices.
 
 - robustness:
     - traps & host funcs.
@@ -41,6 +40,7 @@
     - host fn panics (abort).
 
 - cleanup:
+    - we should probably have some abstraction for the unsafe cell thing.
     - `Memory::bounds_check`.
     - getrev, rw manual vec.
     - reader expectn: Err(eof: bool).
