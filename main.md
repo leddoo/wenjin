@@ -1,6 +1,10 @@
 
 - todo:
-    - remove modules.
+    - reconsider wasm object storage.
+        - do we really want rc?
+        - do we want to expose the rcs (maybe wrapped) externally?
+        - we should probably have some abstraction for the unsafe cell thing.
+    - no oom/invalid handle?
     - unified stack.
         - compression.
             - compute max local/push size.
@@ -9,7 +13,6 @@
     - consider leb128 or other compression for bytecode operands.
     - consider a type table (for optimized callindirect).
     - exhaustion tests.
-    - clone the wasm (cause we have dangling refs).
     - debugging.
     - mutable instances.
         - generational indices.

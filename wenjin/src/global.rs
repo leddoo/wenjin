@@ -3,16 +3,18 @@ use core::cell::UnsafeCell;
 use core::marker::PhantomData;
 
 use crate::Value;
+use crate::store::GlobalId;
 
 
 pub(crate) struct GlobalData {
+    id: GlobalId,
     mutable: bool,
     value: Value,
 }
 
 impl GlobalData {
-    pub fn new(mutable: bool, value: Value) -> GlobalData {
-        Self { mutable, value }
+    pub fn new(id: GlobalId, mutable: bool, value: Value) -> GlobalData {
+        Self { id, mutable, value }
     }
 }
 
@@ -24,8 +26,8 @@ pub struct Global<'a> {
 
 impl<'a> Global<'a> {
     #[inline]
-    pub(crate) fn new(global: &UnsafeCell<GlobalData>) -> Self {
-        Self { inner: NonNull::from(global).cast(), phantom: PhantomData }
+    pub fn id(&self) -> GlobalId {
+        unsafe { self.inner.as_ref().id }
     }
 
     #[inline]
@@ -41,6 +43,12 @@ impl<'a> Global<'a> {
     #[inline]
     pub fn get(&self) -> Value {
         unsafe { self.inner.as_ref().value }
+    }
+
+
+    #[inline]
+    pub(crate) fn new(global: &UnsafeCell<GlobalData>) -> Self {
+        Self { inner: NonNull::from(global).cast(), phantom: PhantomData }
     }
 
     // @todo: type check, mut validation.

@@ -8,19 +8,21 @@ use sti::manual_vec::ManualVec;
 use wasm::{Limits, RefType};
 
 use crate::Error;
-use crate::store::RefValue;
+use crate::store::{RefValue, TableId};
 
 
 
 pub(crate) struct TableData {
+    id: TableId,
     ty: RefType,
     limits: Limits,
     values: ManualVec<RefValue>,
 }
 
 impl TableData {
-    pub fn new(ty: RefType, limits: Limits, default: RefValue) -> Result<Self, Error> {
+    pub fn new(id: TableId, ty: RefType, limits: Limits, default: RefValue) -> Result<Self, Error> {
         let mut this = Self {
+            id,
             ty,
             limits,
             values: ManualVec::new(),
@@ -57,17 +59,22 @@ pub struct Table<'a> {
 
 impl<'a> Table<'a> {
     #[inline]
+    pub fn id(&self) -> TableId {
+        unsafe { self.inner.as_ref().id }
+    }
+
+    #[inline]
     pub(crate) fn new(table: &UnsafeCell<TableData>) -> Self {
         Self { inner: NonNull::from(table).cast(), phantom: PhantomData }
     }
 
     #[inline]
-    pub fn as_slice(&self) -> &[RefValue] {
+    pub(crate) unsafe fn as_slice(&self) -> &[RefValue] {
         unsafe { &self.inner.as_ref().values }
     }
 
     #[inline]
-    pub fn as_mut_slice(&mut self) -> &mut [RefValue] {
+    pub(crate) unsafe fn as_mut_slice(&mut self) -> &mut [RefValue] {
         unsafe { &mut self.inner.as_mut().values }
     }
 }

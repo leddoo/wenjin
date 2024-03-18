@@ -180,6 +180,17 @@ fn main() {
         let st_print_i32_f32 = store.new_host_func(|_: i32, _: f32| ()).unwrap();
         let st_print_f64_f64 = store.new_host_func(|_: f64, _: f64| ()).unwrap();
 
+        let imports = &[
+            ("spectest", "global_i32", st_global_i32.into()),
+            ("spectest", "global_i64", st_global_i64.into()),
+            ("spectest", "print_i32", st_print_i32.into()),
+            ("spectest", "print_i64", st_print_i64.into()),
+            ("spectest", "print_f32", st_print_f32.into()),
+            ("spectest", "print_f64", st_print_f64.into()),
+            ("spectest", "print_i32_f32", st_print_i32_f32.into()),
+            ("spectest", "print_f64_f64", st_print_f64_f64.into()),
+        ];
+
         let mut reader = Reader::new(bytes);
 
         fn read_usize(reader: &mut Reader<u8>) -> usize {
@@ -272,7 +283,11 @@ fn main() {
                     }
                 }
 
-                _ => todo!()
+                _ => {
+                    println!("failure: module should be {kind} ({idx}) with error {message:?}");
+                    println!("  but got error {e:?}");
+                    return false;
+                }
             }
         }
 
@@ -292,18 +307,7 @@ fn main() {
                     module_size += wasm.len();
 
                     num_tests += 1;
-                    let inst = 
-                        store.new_module(wasm)
-                        .and_then(|module| store.new_instance(module, &[
-                            ("spectest", "global_i32", st_global_i32.into()),
-                            ("spectest", "global_i64", st_global_i64.into()),
-                            ("spectest", "print_i32", st_print_i32.into()),
-                            ("spectest", "print_i64", st_print_i64.into()),
-                            ("spectest", "print_f32", st_print_f32.into()),
-                            ("spectest", "print_f64", st_print_f64.into()),
-                            ("spectest", "print_i32_f32", st_print_i32_f32.into()),
-                            ("spectest", "print_f64_f64", st_print_f64_f64.into()),
-                        ]));
+                    let inst = store.new_instance(wasm, imports);
                     match inst {
                         Ok(inst) => {
                             num_successes += 1;
@@ -333,7 +337,7 @@ fn main() {
                     }
 
                     num_tests += 1;
-                    let result = store.new_module(wasm).map(|_| ());
+                    let result = store.new_instance(wasm, imports).map(|_| ());
                     if check_error(result, message, idx, "malformed") {
                         num_successes += 1;
                     }
@@ -349,7 +353,7 @@ fn main() {
                     let message = read_string(&mut reader);
 
                     num_tests += 1;
-                    let result = store.new_module(wasm).map(|_| ());
+                    let result = store.new_instance(wasm, imports).map(|_| ());
                     if check_error(result, message, idx, "invalid") {
                         num_successes += 1;
                     }

@@ -192,7 +192,7 @@ impl Store {
         assert!(!self.thread.trapped);
 
         let mut state = unsafe {
-            let func = &self.funcs[init_func as usize];
+            let func = &*self.funcs[init_func as usize].get();
             let FuncKind::Interp(f) = &func.kind else { unreachable!() };
 
             let stack = &mut self.thread.stack;
@@ -215,13 +215,13 @@ impl Store {
             let sp = locals_end;
 
 
-            let inst = &self.instances[f.instance as usize];
+            let inst = &*self.instances[f.instance.id as usize].get();
 
             let mut memory_data = None;
             let mut memory = core::ptr::null_mut();
             let mut memory_size = 0;
-            if let Some(mem_id) = inst.memories.get(0).copied() {
-                let mut mem = Memory::new(&self.memories[mem_id as usize]);
+            if let Some(mem) = inst.memories.get(0) {
+                let mut mem = Memory::new(mem);
                 (memory, memory_size) = mem.as_mut_ptr();
                 memory_data = Some(mem);
             }
@@ -232,11 +232,11 @@ impl Store {
             }
 
             State {
-                instance: f.instance,
+                instance: f.instance.id,
                 func: init_func,
-                pc: f.code,
-                code_begin: f.code,
-                code_end: f.code_end,
+                pc: f.code_begin(),
+                code_begin: f.code_begin(),
+                code_end: f.code_end(),
                 bp,
                 sp,
                 locals_end,
@@ -331,21 +331,21 @@ impl Store {
                         let bp = state.bp.sub(frame.bp_offset as usize);
                         let sp = state.bp.add(num_rets);
 
-                        let func = &self.funcs[frame.func as usize];
+                        let func = &*self.funcs[frame.func as usize].get();
                         let FuncKind::Interp(f) = &func.kind else { unreachable_unchecked() };
 
                         let mut memory_data = state.memory_data;
                         let mut memory = state.memory;
                         let mut memory_size = state.memory_size;
                         if frame.instance != state.instance {
-                            let inst = &self.instances[frame.instance as usize];
+                            let inst = &*self.instances[frame.instance as usize].get();
 
                             memory_data = None;
                             memory = core::ptr::null_mut();
                             memory_size = 0;
 
-                            if let Some(mem_id) = inst.memories.get(0).copied() {
-                                let mut mem = Memory::new(&self.memories[mem_id as usize]);
+                            if let Some(mem) = inst.memories.get(0) {
+                                let mut mem = Memory::new(mem);
                                 (memory, memory_size) = mem.as_mut_ptr();
                                 memory_data = Some(mem);
                             }
@@ -355,8 +355,8 @@ impl Store {
                             instance: frame.instance,
                             func: frame.func,
                             pc: frame.pc.as_ptr(),
-                            code_begin: f.code,
-                            code_end: f.code_end,
+                            code_begin: f.code_begin(),
+                            code_end: f.code_end(),
                             bp,
                             sp,
                             locals_end: bp.add(f.num_locals as usize),
@@ -377,42 +377,39 @@ impl Store {
                 }
 
                 wasm::opcode::CALL | wasm::opcode::CALL_INDIRECT => {
-                    let mut func_id = if op == wasm::opcode::CALL {
+                    let mut func = if op == wasm::opcode::CALL {
                         let func_idx = state.next_u32();
 
-                        let inst = &self.instances[state.instance as usize];
-                        inst.funcs[func_idx as usize]
+                        let inst = unsafe { &*self.instances[state.instance as usize].get() };
+                        unsafe { &*inst.funcs[func_idx as usize].get() }
                     }
                     else {
                         let type_idx = state.next_u32();
                         let tab_idx = state.next_u32();
                         let i = state.pop().as_i32() as usize;
 
-                        let inst = &self.instances[state.instance as usize];
-                        let tab_idx = inst.tables[tab_idx as usize];
-                        let tab = Table::new(&self.tables[tab_idx as usize]);
+                        let inst = unsafe { &*self.instances[state.instance as usize].get() };
+                        let tab = Table::new(&inst.tables[tab_idx as usize]);
 
-                        let Some(id) = tab.as_slice().get(i) else {
+                        let Some(id) = unsafe { tab.as_slice() }.get(i) else {
                             vm_err!(Error::TrapTableBounds);
                         };
                         let Some(func_id) = id.to_option() else {
                             vm_err!(Error::TrapCallIndirectRefNull);
                         };
 
-                        let module = &self.modules[inst.module as usize];
-                        let expected_ty = module.wasm.types[type_idx as usize];
-                        if self.funcs[func_id as usize].ty != expected_ty {
+                        let func = unsafe { &*self.funcs[func_id as usize].get() };
+
+                        let expected_ty = inst.module.types[type_idx as usize];
+                        if func.ty != expected_ty {
                             vm_err!(Error::TrapCallIndirectTypeMismatch);
                         }
 
-                        func_id
+                        func
                     };
 
-                    let mut func = &self.funcs[func_id as usize];
-                    while let FuncKind::Var(id) = func.kind {
-                        let Some(id) = id else { todo!() };
-                        func_id = id;
-                        func = &self.funcs[id as usize];
+                    while let FuncKind::Var(val) = &func.kind {
+                        func = unsafe { &*val.as_ref().unwrap().get() };
                     }
                     match &func.kind {
                         FuncKind::Interp(f) => unsafe {
@@ -463,26 +460,26 @@ impl Store {
                             let mut memory_data = state.memory_data;
                             let mut memory = state.memory;
                             let mut memory_size = state.memory_size;
-                            if f.instance != state.instance {
-                                let inst = &self.instances[f.instance as usize];
+                            if f.instance.id != state.instance {
+                                let inst = &*self.instances[f.instance.id as usize].get();
 
                                 memory_data = None;
                                 memory = core::ptr::null_mut();
                                 memory_size = 0;
 
-                                if let Some(mem_id) = inst.memories.get(0).copied() {
-                                    let mut mem = Memory::new(&self.memories[mem_id as usize]);
+                                if let Some(mem) = inst.memories.get(0) {
+                                    let mut mem = Memory::new(mem);
                                     (memory, memory_size) = mem.as_mut_ptr();
                                     memory_data = Some(mem);
                                 }
                             }
 
                             state = State {
-                                instance: f.instance,
-                                func: func_id,
-                                pc: f.code,
-                                code_begin: f.code,
-                                code_end: f.code_end,
+                                instance: f.instance.id,
+                                func: func.id.id,
+                                pc: f.code_begin(),
+                                code_begin: f.code_begin(),
+                                code_end: f.code_end(),
                                 bp,
                                 sp,
                                 locals_end,
@@ -589,15 +586,15 @@ impl Store {
 
                 wasm::opcode::GLOBAL_GET => {
                     let idx = state.next_u32();
-                    let inst = &self.instances[state.instance as usize];
-                    let global = Global::new(&self.globals[inst.globals[idx as usize] as usize]);
+                    let inst = unsafe { &*self.instances[state.instance as usize].get() };
+                    let global = Global::new(&inst.globals[idx as usize]);
                     state.push(StackValue::from_value(global.get()));
                 }
 
                 wasm::opcode::GLOBAL_SET => {
                     let idx = state.next_u32();
-                    let inst = &self.instances[state.instance as usize];
-                    let mut global = Global::new(&self.globals[inst.globals[idx as usize] as usize]);
+                    let inst = unsafe { &*self.instances[state.instance as usize].get() };
+                    let mut global = Global::new(&inst.globals[idx as usize]);
                     global.set(state.pop().to_value(global.get().ty()));
                 }
 

@@ -8,12 +8,13 @@ use sti::vec::Vec;
 
 use wasm::Limits;
 
-use crate::{Error, WasmType};
+use crate::{Error, WasmType, MemoryId};
 use crate::store::StackValue;
 
 
 
 pub(crate) struct MemoryData {
+    id: MemoryId,
     limits: Limits,
     buffer: NonNull<u8>,
     size_pages: u32,
@@ -22,8 +23,9 @@ pub(crate) struct MemoryData {
 const ALIGN: usize = 16;
 
 impl MemoryData {
-    pub fn new(limits: Limits) -> Result<Self, Error> {
+    pub fn new(id: MemoryId, limits: Limits) -> Result<Self, Error> {
         let mut this = Self {
+            id,
             limits,
             buffer: NonNull::dangling(),
             size_pages: 0,
@@ -92,8 +94,8 @@ pub struct Memory<'a> {
 
 impl<'a> Memory<'a> {
     #[inline]
-    pub(crate) fn new(memory: &UnsafeCell<MemoryData>) -> Self {
-        Self { inner: NonNull::from(memory).cast(), phantom: PhantomData }
+    pub fn id(&self) -> MemoryId {
+        unsafe { self.inner.as_ref().id }
     }
 
     #[inline]
@@ -176,6 +178,11 @@ impl<'a> Memory<'a> {
             out.set_len(out.len() + len)
         }
         return Ok(());
+    }
+
+    #[inline]
+    pub(crate) fn new(memory: &UnsafeCell<MemoryData>) -> Self {
+        Self { inner: NonNull::from(memory).cast(), phantom: PhantomData }
     }
 
     #[inline]

@@ -25,8 +25,8 @@ fn caller_api() {
 
     store.call(host_func, 0).unwrap();
 
-    let module = store.new_module(include_bytes!("caller_api.wasm")).unwrap();
-    let inst = store.new_instance(module, &[("host", "host_func", host_func.into())]).unwrap();
+    let inst = store.new_instance(include_bytes!("caller_api.wasm"),
+        &[("host", "host_func", host_func.into())]).unwrap();
     the_inst.set(Some(inst));
 
     let call_host = store.get_export_func::<i32, ()>(inst, "call_host").unwrap();

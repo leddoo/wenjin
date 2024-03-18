@@ -965,6 +965,16 @@ impl<'a> Parser<'a> {
                     for _ in 0..num_elements {
                         let offset = sp.reader.offset();
                         let elem = sp.parse_element(alloc)?;
+                        match elem.kind {
+                            ElementKind::Passive => (),
+                            ElementKind::Active { table, offset: _ } => {
+                                if module.get_table(table).is_none() {
+                                    return Err(ParseModuleError::Validation(offset,
+                                        ValidatorError::InvalidTableIdx));
+                                }
+                            }
+                            ElementKind::Declarative => (),
+                        }
                         match elem.ty {
                             RefType::FuncRef => {
                                 for idx in elem.values {
@@ -1037,6 +1047,10 @@ impl<'a> Parser<'a> {
             if sp.reader.len() != 0 {
                 return Err(sp.error(ParseErrorKind::SectionTrailingData).into());
             }
+        }
+
+        if module.codes.len() != module.funcs.len() {
+            return Err(p.error(ParseErrorKind::NumCodesNeNumFuncs).into());
         }
 
         module.customs = customs.leak();

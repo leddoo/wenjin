@@ -7,9 +7,7 @@ fn basic() {
 
     let mut store = Store::new();
 
-    let module = store.new_module(wasm).unwrap();
-
-    let inst = store.new_instance(module, &[]).unwrap();
+    let inst = store.new_instance(wasm, &[]).unwrap();
 
     let add = store.get_export_func_dyn(inst, "add").unwrap();
     let add_ty = store.get_export_func::<(i32, i32), i32>(inst, "add").unwrap();

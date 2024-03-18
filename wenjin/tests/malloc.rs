@@ -121,8 +121,7 @@ fn malloc() {
         assert!(false);
     }).unwrap();
 
-    let module = store.new_module(include_bytes!("malloc.wasm")).unwrap();
-    let inst = store.new_instance(module, &[
+    let inst = store.new_instance(include_bytes!("malloc.wasm"), &[
         ("host", "malloc", malloc.into()),
         ("host", "fail", fail.into()),
     ]).unwrap();

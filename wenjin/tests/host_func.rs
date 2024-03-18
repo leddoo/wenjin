@@ -25,8 +25,8 @@ fn host_func() {
         }
     }).unwrap();
 
-    let module = store.new_module(include_bytes!("host_func.wasm")).unwrap();
-    let inst = store.new_instance(module, &[("host", "fib_host", fib_host.into())]).unwrap();
+    let inst = store.new_instance(include_bytes!("host_func.wasm"),
+        &[("host", "fib_host", fib_host.into())]).unwrap();
 
     store.assign_func_var(fib_guest, store.get_export_func(inst, "fib").unwrap()).unwrap();
 
