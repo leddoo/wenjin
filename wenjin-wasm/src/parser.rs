@@ -1,7 +1,6 @@
-use sti::traits::UnwrapDebug;
 use sti::reader::Reader;
 use sti::arena::Arena;
-use sti::manual_vec::ManualVec;
+use sti::vec::Vec;
 
 use crate::{leb128, BrTable, ValidatorError};
 use crate::{ValueType, RefType, FuncType, BlockType, Limits, TableType, MemoryType, GlobalType};
@@ -164,17 +163,15 @@ impl<'a> Parser<'a> {
             .map_err(|_| self.error(ParseErrorKind::InvalidFuncType))?;
 
         let num_params = self.parse_length()?;
-        let mut params = ManualVec::with_cap_in(alloc, num_params)
-            .ok_or_else(|| self.error(ParseErrorKind::OOM))?;
+        let mut params = Vec::with_cap_in(alloc, num_params);
         for _ in 0..num_params {
-            params.push(self.parse_value_type()?).unwrap_debug();
+            params.push(self.parse_value_type()?);
         }
 
         let num_rets = self.parse_length()?;
-        let mut rets = ManualVec::with_cap_in(alloc, num_rets)
-            .ok_or_else(|| self.error(ParseErrorKind::OOM))?;
+        let mut rets = Vec::with_cap_in(alloc, num_rets);
         for _ in 0..num_rets {
-            rets.push(self.parse_value_type()?).unwrap_debug();
+            rets.push(self.parse_value_type()?);
         }
 
         return Ok(FuncType { params: params.leak(), rets: rets.leak() });
@@ -315,10 +312,9 @@ impl<'a> Parser<'a> {
                 };
 
                 let num_values = self.parse_length()?;
-                let mut values = ManualVec::with_cap_in(alloc, num_values)
-                    .ok_or_else(|| self.error(ParseErrorKind::OOM))?;
+                let mut values = Vec::with_cap_in(alloc, num_values);
                 for _ in 0..num_values {
-                    values.push(self.parse_u32()?).unwrap_debug();
+                    values.push(self.parse_u32()?);
                 }
 
                 Element {
@@ -341,10 +337,9 @@ impl<'a> Parser<'a> {
                 }
 
                 let num_values = self.parse_length()?;
-                let mut values = ManualVec::with_cap_in(alloc, num_values)
-                    .ok_or_else(|| self.error(ParseErrorKind::OOM))?;
+                let mut values = Vec::with_cap_in(alloc, num_values);
                 for _ in 0..num_values {
-                    values.push(self.parse_u32()?).unwrap_debug();
+                    values.push(self.parse_u32()?);
                 }
 
                 Element {
@@ -365,7 +360,7 @@ impl<'a> Parser<'a> {
 
         let num_local_groups = p.parse_u32()?;
 
-        let mut locals = ManualVec::new_in(alloc);
+        let mut locals = Vec::new_in(alloc);
         for _ in 0..num_local_groups {
             let n = p.parse_length()?;
             let ty = p.parse_value_type()?;
@@ -374,10 +369,7 @@ impl<'a> Parser<'a> {
                 return Err(self.error(ParseErrorKind::TooManyLocals));
             }
 
-            locals.reserve_extra(n).map_err(|_| self.error(ParseErrorKind::OOM))?;
-            for _ in 0..n {
-                locals.push(ty).unwrap_debug();
-            }
+            locals.extend((0..n).map(|_| ty));
         }
 
         let expr = SubSection {
@@ -688,7 +680,7 @@ impl<'a> Parser<'a> {
 
         let mut module = Module::default();
 
-        let mut customs = ManualVec::new_in(alloc);
+        let mut customs = Vec::new_in(alloc);
 
         while !p.is_done() {
             let section = p.parse_section()?;
@@ -706,8 +698,7 @@ impl<'a> Parser<'a> {
                         return Err(sp.error(ParseErrorKind::CustomSectionLimit).into());
                     }
 
-                    customs.push_or_alloc(sp.parse_custom_section()?)
-                        .map_err(|_| sp.error(ParseErrorKind::OOM))?;
+                    customs.push(sp.parse_custom_section()?);
                 }
 
                 SectionKind::Type => {
@@ -716,12 +707,9 @@ impl<'a> Parser<'a> {
                         return Err(sp.error(ParseErrorKind::TypeSectionLimit).into());
                     }
 
-                    let mut types =
-                        ManualVec::with_cap_in(alloc, num_types as usize)
-                            .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
-
+                    let mut types = Vec::with_cap_in(alloc, num_types as usize);
                     for _ in 0..num_types {
-                        types.push(sp.parse_func_type(alloc)?).unwrap_debug();
+                        types.push(sp.parse_func_type(alloc)?);
                     }
 
                     module.types = types.leak();
@@ -733,9 +721,7 @@ impl<'a> Parser<'a> {
                         return Err(sp.error(ParseErrorKind::ImportSectionLimit).into());
                     }
 
-                    let mut imports =
-                        ManualVec::with_cap_in(alloc, num_imports as usize)
-                            .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
+                    let mut imports = Vec::with_cap_in(alloc, num_imports as usize);
 
                     let mut num_funcs = 0;
                     let mut num_tables = 0;
@@ -759,31 +745,19 @@ impl<'a> Parser<'a> {
                             ImportKind::Memory(_) => num_memories += 1,
                             ImportKind::Global(_) => num_globals  += 1,
                         }
-                        imports.push(import).unwrap_debug();
+                        imports.push(import);
                     }
 
-                    let mut funcs =
-                        ManualVec::with_cap_in(alloc, num_funcs)
-                            .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
-
-                    let mut tables =
-                        ManualVec::with_cap_in(alloc, num_tables)
-                            .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
-
-                    let mut memories =
-                        ManualVec::with_cap_in(alloc, num_memories)
-                            .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
-
-                    let mut globals =
-                        ManualVec::with_cap_in(alloc, num_globals)
-                            .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
-
+                    let mut funcs = Vec::with_cap_in(alloc, num_funcs);
+                    let mut tables = Vec::with_cap_in(alloc, num_tables);
+                    let mut memories = Vec::with_cap_in(alloc, num_memories);
+                    let mut globals = Vec::with_cap_in(alloc, num_globals);
                     for import in imports.iter().copied() {
                         match import.kind {
-                            ImportKind::Func(it)   => funcs.push(it).unwrap_debug(),
-                            ImportKind::Table(it)  => tables.push(it).unwrap_debug(),
-                            ImportKind::Memory(it) => memories.push(it).unwrap_debug(),
-                            ImportKind::Global(it) => globals.push(it).unwrap_debug(),
+                            ImportKind::Func(it)   => funcs.push(it),
+                            ImportKind::Table(it)  => tables.push(it),
+                            ImportKind::Memory(it) => memories.push(it),
+                            ImportKind::Global(it) => globals.push(it),
                         }
                     }
 
@@ -806,10 +780,7 @@ impl<'a> Parser<'a> {
                         return Err(sp.error(ParseErrorKind::FuncSectionLimit).into());
                     }
 
-                    let mut funcs =
-                        ManualVec::with_cap_in(alloc, num_funcs as usize)
-                        .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
-
+                    let mut funcs = Vec::with_cap_in(alloc, num_funcs as usize);
                     for _ in 0..num_funcs {
                         let offset = sp.reader.offset();
                         let ty = sp.parse_u32()?;
@@ -817,7 +788,7 @@ impl<'a> Parser<'a> {
                             return Err(ParseModuleError::Validation(offset,
                                 ValidatorError::InvalidTypeIdx));
                         }
-                        funcs.push(ty).unwrap_debug();
+                        funcs.push(ty);
                     }
 
                     module.funcs = funcs.leak();
@@ -829,12 +800,9 @@ impl<'a> Parser<'a> {
                         return Err(sp.error(ParseErrorKind::TableSectionLimit).into());
                     }
 
-                    let mut tables =
-                        ManualVec::with_cap_in(alloc, num_tables as usize)
-                            .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
-
+                    let mut tables = Vec::with_cap_in(alloc, num_tables as usize);
                     for _ in 0..num_tables {
-                        tables.push(sp.parse_table_type()?).unwrap_debug();
+                        tables.push(sp.parse_table_type()?);
                     }
 
                     module.tables = tables.leak();
@@ -846,12 +814,9 @@ impl<'a> Parser<'a> {
                         return Err(sp.error(ParseErrorKind::MemorySectionLimit).into());
                     }
 
-                    let mut memories =
-                        ManualVec::with_cap_in(alloc, num_memories as usize)
-                            .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
-
+                    let mut memories = Vec::with_cap_in(alloc, num_memories as usize);
                     for _ in 0..num_memories {
-                        memories.push(sp.parse_memory_type()?).unwrap_debug();
+                        memories.push(sp.parse_memory_type()?);
                     }
 
                     module.memories = memories.leak();
@@ -863,10 +828,7 @@ impl<'a> Parser<'a> {
                         return Err(sp.error(ParseErrorKind::GlobalSectionLimit).into());
                     }
 
-                    let mut globals: ManualVec<Global, &Arena> =
-                        ManualVec::with_cap_in(alloc, num_globals as usize)
-                            .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
-
+                    let mut globals: Vec<Global, _> = Vec::with_cap_in(alloc, num_globals as usize);
                     for _ in 0..num_globals {
                         let offset = sp.reader.offset();
                         let global = sp.parse_global()?;
@@ -894,7 +856,7 @@ impl<'a> Parser<'a> {
                                 ValidatorError::InvalidGlobalInit));
                         }
 
-                        globals.push(global).unwrap_debug();
+                        globals.push(global);
                     }
 
                     module.globals = globals.leak();
@@ -906,10 +868,7 @@ impl<'a> Parser<'a> {
                         return Err(sp.error(ParseErrorKind::ExportSectionLimit).into());
                     }
 
-                    let mut exports =
-                        ManualVec::with_cap_in(alloc, num_exports as usize)
-                            .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
-
+                    let mut exports = Vec::with_cap_in(alloc, num_exports as usize);
                     for _ in 0..num_exports {
                         let offset = sp.reader.offset();
                         let export = sp.parse_export()?;
@@ -942,7 +901,7 @@ impl<'a> Parser<'a> {
                                 }
                             }
                         }
-                        exports.push(export).unwrap_debug();
+                        exports.push(export);
                     }
 
                     module.exports = exports.leak();
@@ -958,10 +917,7 @@ impl<'a> Parser<'a> {
                         return Err(sp.error(ParseErrorKind::ElementSectionLimit).into());
                     }
 
-                    let mut elements =
-                        ManualVec::with_cap_in(alloc, num_elements as usize)
-                            .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
-
+                    let mut elements = Vec::with_cap_in(alloc, num_elements as usize);
                     for _ in 0..num_elements {
                         let offset = sp.reader.offset();
                         let elem = sp.parse_element(alloc)?;
@@ -986,7 +942,7 @@ impl<'a> Parser<'a> {
                             }
                             RefType::ExternRef => (),
                         }
-                        elements.push(elem).unwrap_debug();
+                        elements.push(elem);
                     }
 
                     module.elements = elements.leak();
@@ -998,12 +954,9 @@ impl<'a> Parser<'a> {
                         return Err(sp.error(ParseErrorKind::NumCodesNeNumFuncs).into());
                     }
 
-                    let mut codes =
-                        ManualVec::with_cap_in(alloc, num_codes as usize)
-                            .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
-
+                    let mut codes = Vec::with_cap_in(alloc, num_codes as usize);
                     for _ in 0..num_codes {
-                        codes.push(sp.parse_code(limits.max_locals, alloc)?).unwrap_debug();
+                        codes.push(sp.parse_code(limits.max_locals, alloc)?);
                     }
 
                     module.codes = codes.leak();
@@ -1015,10 +968,7 @@ impl<'a> Parser<'a> {
                         return Err(sp.error(ParseErrorKind::DataSectionLimit).into());
                     }
 
-                    let mut datas =
-                        ManualVec::with_cap_in(alloc, num_datas as usize)
-                            .ok_or_else(|| sp.error(ParseErrorKind::OOM))?;
-
+                    let mut datas = Vec::with_cap_in(alloc, num_datas as usize);
                     for _ in 0..num_datas {
                         let offset = sp.reader.offset();
                         let data = sp.parse_data()?;
@@ -1032,7 +982,7 @@ impl<'a> Parser<'a> {
                                 }
                             }
                         }
-                        datas.push(data).unwrap_debug();
+                        datas.push(data);
                     }
 
                     module.datas = datas.leak();

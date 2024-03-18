@@ -1,5 +1,5 @@
-use sti::traits::{CopyIt, UnwrapDebug};
-use sti::manual_vec::ManualVec;
+use sti::traits::CopyIt;
+use sti::vec::Vec;
 
 use crate::{ValueType, BlockType, TypeIdx, FuncIdx, TableIdx, MemoryIdx, GlobalIdx, Module, TableType, FuncType, RefType, GlobalType, MemoryType, BrTable};
 use crate::operator::OperatorVisitor;
@@ -32,7 +32,6 @@ pub enum ValidatorError {
     GlobalNotMutable,
     AlignTooLarge,
     LoadStoreRefType,
-    OOM,
     Todo,
 }
 
@@ -46,9 +45,9 @@ pub struct Validator<'a> {
 
     pub module: &'a Module<'a>,
 
-    locals: ManualVec<ValueType>,
-    stack: ManualVec<ValueType>,
-    frames: ManualVec<ControlFrame>,
+    locals: Vec<ValueType>,
+    stack: Vec<ValueType>,
+    frames: Vec<ControlFrame>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -74,9 +73,9 @@ impl<'a> Validator<'a> {
             stack_limit: DEFAULT_STACK_LIMIT,
             frame_limit: DEFAULT_FRAME_LIMIT,
             module,
-            locals: ManualVec::new(),
-            stack: ManualVec::new(),
-            frames: ManualVec::new(),
+            locals: Vec::new(),
+            stack: Vec::new(),
+            frames: Vec::new(),
         }
     }
 
@@ -109,24 +108,23 @@ impl<'a> Validator<'a> {
     pub fn begin_func(&mut self, ty: TypeIdx, locals: &[ValueType]) -> Result<(), ValidatorError> {
         self.locals.truncate(0);
         let params = self.ty(ty)?.params;
-        self.locals.reserve(params.len() + locals.len())
-            .map_err(|_| ValidatorError::OOM)?;
+        self.locals.reserve(params.len() + locals.len());
         for param in params.copy_it() {
-            self.locals.push(param).unwrap_debug();
+            self.locals.push(param);
         }
         for local in locals.copy_it() {
-            self.locals.push(local).unwrap_debug();
+            self.locals.push(local);
         }
 
         self.stack.truncate(0);
 
         self.frames.truncate(0);
-        self.frames.push_or_alloc(ControlFrame {
+        self.frames.push(ControlFrame {
             kind: ControlFrameKind::Block,
             ty: BlockType::Func(ty),
             height: 0,
             unreachable: false,
-        }).map_err(|_| ValidatorError::OOM)?;
+        });
 
         return Ok(());
     }
@@ -156,8 +154,7 @@ impl<'a> Validator<'a> {
                 return Err(ValidatorError::StackLimit);
             }
 
-            self.stack.push_or_alloc(ty)
-                .map_err(|_| ValidatorError::OOM)?;
+            self.stack.push(ty);
         }
         return Ok(());
     }
@@ -211,12 +208,12 @@ impl<'a> Validator<'a> {
 
         self.push_n(self.block_begin_types(ty))?;
 
-        self.frames.push_or_alloc(ControlFrame {
+        self.frames.push(ControlFrame {
             kind,
             ty,
             height,
             unreachable: self.is_unreachable(),
-        }).map_err(|_| ValidatorError::OOM)?;
+        });
 
         return Ok(());
     }

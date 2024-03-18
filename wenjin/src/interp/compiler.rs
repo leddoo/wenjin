@@ -1,5 +1,5 @@
 use sti::boks::Box;
-use sti::manual_vec::ManualVec;
+use sti::vec::Vec;
 
 use wasm::{ValueType, BlockType, TypeIdx, FuncIdx, TableIdx, MemoryIdx, GlobalIdx, opcode, BrTable, ValidatorError};
 
@@ -31,16 +31,14 @@ pub(crate) struct Compiler<'a> {
     module: &'a wasm::Module<'a>,
     validator: wasm::Validator<'a>,
 
-    code: ManualVec<u8>,
-    frames: ManualVec<Frame>,
+    code: Vec<u8>,
+    frames: Vec<Frame>,
 
     num_params: u32,
     begin_stack: u32,
     begin_unreachable: bool,
     max_stack: u32,
     max_align: u32,
-
-    oom: bool,
 }
 
 // address of the label.
@@ -71,14 +69,13 @@ impl<'a> Compiler<'a> {
         Self {
             module,
             validator: wasm::Validator::new(module),
-            code: ManualVec::new(),
-            frames: ManualVec::new(),
+            code: Vec::new(),
+            frames: Vec::new(),
             num_params: 0,
             begin_stack: 0,
             begin_unreachable: false,
             max_stack: 0,
             max_align: 0,
-            oom: false,
         }
     }
 
@@ -103,18 +100,17 @@ impl<'a> Compiler<'a> {
 
     pub fn end_func(&mut self, instance: InstanceId) -> Result<InterpFunc, ValidatorError> {
         self.validator.end_func()?;
-
         debug_assert_eq!(self.frames.len(), 0);
-        if self.oom {
-            return Err(ValidatorError::OOM);
-        }
 
         let len = self.code.len();
+        if len > i32::MAX as usize {
+            todo!()
+        }
 
         if 0==1 { crate::interp::dump(&self.code); }
 
         let alloc = sti::alloc::GlobalAlloc;
-        let ptr = sti::alloc::alloc_array::<u8, _>(&alloc, len).ok_or_else(|| ValidatorError::OOM)?;
+        let ptr = sti::alloc::alloc_array::<u8, _>(&alloc, len).expect("out of memory");
         let code = unsafe {
             core::ptr::copy_nonoverlapping(
                 self.code.as_ptr(),
@@ -165,18 +161,12 @@ impl<'a> Compiler<'a> {
 
     #[inline]
     fn add_byte(&mut self, byte: u8) {
-        if 1 > i32::MAX as usize - self.code.len()
-        || self.code.push_or_alloc(byte).is_err() {
-            self.oom = true;
-        }
+        self.code.push(byte);
     }
 
     #[inline]
     fn add_bytes(&mut self, bytes: &[u8]) {
-        if bytes.len() > i32::MAX as usize - self.code.len()
-        || self.code.extend_from_slice_or_alloc(bytes).is_err() {
-            self.oom = true;
-        }
+        self.code.extend_from_slice(bytes);
     }
 
     fn push_frame(&mut self, kind: FrameKind, ty: BlockType, pop: u32) {
@@ -187,9 +177,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn push_frame_core(&mut self, frame: Frame) {
-        if self.frames.push_or_alloc(frame).is_err() {
-            self.oom = true;
-        }
+        self.frames.push(frame);
     }
 
     fn pop_frame(&mut self) -> Frame {
@@ -208,7 +196,7 @@ impl<'a> Compiler<'a> {
             }
 
             FrameKind::Loop { head } => {
-                let delta = *head as i32 - self.code.len() as i32;
+                let delta = (*head as i32).wrapping_sub(self.code.len() as i32);
                 self.add_bytes(&delta.to_ne_bytes());
             }
         }
@@ -243,7 +231,7 @@ impl<'a> Compiler<'a> {
             let bytes = <&mut [u8; 4]>::try_from(slice).unwrap();
             let next = u32::from_ne_bytes(*bytes);
 
-            let delta = dst as i32 - at as i32;
+            let delta = (dst as i32).wrapping_sub(at as i32);
             *bytes = delta.to_ne_bytes();
 
             at = next;
