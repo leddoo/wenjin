@@ -171,14 +171,14 @@ fn main() {
 
         let mut store = Store::new();
 
-        let st_global_i32 = store.new_global(false, Value::I32(666)).unwrap();
-        let st_global_i64 = store.new_global(false, Value::I64(666)).unwrap();
-        let st_print_i32 = store.new_host_func(|_: i32| ()).unwrap();
-        let st_print_i64 = store.new_host_func(|_: i64| ()).unwrap();
-        let st_print_f32 = store.new_host_func(|_: f32| ()).unwrap();
-        let st_print_f64 = store.new_host_func(|_: f64| ()).unwrap();
-        let st_print_i32_f32 = store.new_host_func(|_: i32, _: f32| ()).unwrap();
-        let st_print_f64_f64 = store.new_host_func(|_: f64, _: f64| ()).unwrap();
+        let st_global_i32 = store.new_global(false, Value::I32(666));
+        let st_global_i64 = store.new_global(false, Value::I64(666));
+        let st_print_i32 = store.new_host_func(|_: i32| ());
+        let st_print_i64 = store.new_host_func(|_: i64| ());
+        let st_print_f32 = store.new_host_func(|_: f32| ());
+        let st_print_f64 = store.new_host_func(|_: f64| ());
+        let st_print_i32_f32 = store.new_host_func(|_: i32, _: f32| ());
+        let st_print_f64_f64 = store.new_host_func(|_: f64, _: f64| ());
 
         let imports = &[
             ("spectest", "global_i32", st_global_i32.into()),

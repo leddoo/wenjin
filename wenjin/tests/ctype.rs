@@ -6,7 +6,7 @@ fn ctype_padding() {
     let mut store = Store::new();
 
     let mem_id = store.new_memory(Default::default()).unwrap();
-    let mut mem = store.memory(mem_id).unwrap();
+    let mut mem = store.memory(mem_id);
 
     mem.grow(1).unwrap();
     assert_eq!(mem.size_bytes(), wasm::PAGE_SIZE);

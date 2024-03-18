@@ -3,12 +3,11 @@ use core::ptr::NonNull;
 use core::marker::PhantomData;
 use core::any::Any;
 
-use sti::traits::UnwrapDebug;
-use sti::alloc::GlobalAlloc;
 use sti::arena::Arena;
 use sti::boks::Box;
 use sti::rc::Rc;
-use sti::manual_vec::ManualVec;
+use sti::vec::Vec;
+use sti::keyed::KVec;
 
 use crate::{Error, Value};
 use crate::table::{TableData, Table};
@@ -18,29 +17,20 @@ use crate::typed::{WasmTypes, HostFunc};
 use crate::interp;
 
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct InstanceId { pub(crate) id: u32 }
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct FuncId { pub(crate) id: u32 }
+sti::define_key!(pub, u32, InstanceId);
+sti::define_key!(pub, u32, FuncId);
+sti::define_key!(pub, u32, TableId);
+sti::define_key!(pub, u32, MemoryId);
+sti::define_key!(pub, u32, GlobalId);
 
 // @todo: fix trait impls.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct TypedFuncId<P, R> { id: u32, phantom: PhantomData<fn(P) -> R> }
+pub struct TypedFuncId<P, R> { func_id: FuncId, phantom: PhantomData<fn(P) -> R> }
 
 impl<P, R> TypedFuncId<P, R> {
     #[inline]
-    fn func(&self) -> FuncId { FuncId { id: self.id } }
+    fn func_id(&self) -> FuncId { self.func_id }
 }
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct TableId { id: u32 }
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct MemoryId { id: u32 }
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct GlobalId { id: u32 }
 
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -71,18 +61,18 @@ pub enum Extern {
 }
 
 impl From<FuncId> for Extern { #[inline] fn from(value: FuncId) -> Self { Self::Func(value) } }
-impl<P, R> From<TypedFuncId<P, R>> for Extern { #[inline] fn from(value: TypedFuncId<P, R>) -> Self { Self::Func(value.func()) } }
+impl<P, R> From<TypedFuncId<P, R>> for Extern { #[inline] fn from(value: TypedFuncId<P, R>) -> Self { Self::Func(value.func_id) } }
 impl From<TableId> for Extern { #[inline] fn from(value: TableId) -> Self { Self::Table(value) } }
 impl From<MemoryId> for Extern { #[inline] fn from(value: MemoryId) -> Self { Self::Memory(value) } }
 impl From<GlobalId> for Extern { #[inline] fn from(value: GlobalId) -> Self { Self::Global(value) } }
 
 
 pub struct Store {
-    pub(crate) instances: ManualVec<Rc<UnsafeCell<InstanceData>>>,
-    pub(crate) funcs: ManualVec<Rc<UnsafeCell<FuncData>>>,
-    pub(crate) tables: ManualVec<Rc<UnsafeCell<TableData>>>,
-    pub(crate) memories: ManualVec<Rc<UnsafeCell<MemoryData>>>,
-    pub(crate) globals: ManualVec<Rc<UnsafeCell<GlobalData>>>,
+    pub(crate) instances:   KVec<InstanceId,    Rc<UnsafeCell<InstanceData>>>,
+    pub(crate) funcs:       KVec<FuncId,        Rc<UnsafeCell<FuncData>>>,
+    pub(crate) tables:      KVec<TableId,       Rc<UnsafeCell<TableData>>>,
+    pub(crate) memories:    KVec<MemoryId,      Rc<UnsafeCell<MemoryData>>>,
+    pub(crate) globals:     KVec<GlobalId,      Rc<UnsafeCell<GlobalData>>>,
     pub(crate) thread: ThreadData,
 }
 
@@ -91,14 +81,14 @@ pub(crate) struct InstanceData {
     #[allow(dead_code)]
     pub id: InstanceId,
     #[allow(dead_code)]
-    pub wasm: ManualVec<u8>,
+    pub wasm: Vec<u8>,
     #[allow(dead_code)]
     pub alloc: Arena,
     pub module: wasm::Module<'static>,
-    pub funcs: ManualVec<Rc<UnsafeCell<FuncData>>>,
-    pub tables: ManualVec<Rc<UnsafeCell<TableData>>>,
-    pub memories: ManualVec<Rc<UnsafeCell<MemoryData>>>,
-    pub globals: ManualVec<Rc<UnsafeCell<GlobalData>>>,
+    pub funcs:    KVec<FuncId,   Rc<UnsafeCell<FuncData>>>,
+    pub tables:   KVec<TableId,  Rc<UnsafeCell<TableData>>>,
+    pub memories: KVec<MemoryId, Rc<UnsafeCell<MemoryData>>>,
+    pub globals:  KVec<GlobalId, Rc<UnsafeCell<GlobalData>>>,
 }
 
 
@@ -218,50 +208,42 @@ impl StackValue {
 
 #[derive(Debug)]
 pub(crate) struct StackFrame {
-    pub instance: u32,
-    pub func: u32,
+    pub instance: InstanceId,
+    pub func: FuncId,
     pub pc: NonNull<u8>,
     pub bp_offset: u32,
 }
 
 pub(crate) struct ThreadData {
-    pub stack: ManualVec<StackValue>,
-    pub frames: ManualVec<Option<StackFrame>>,
+    pub stack: Vec<StackValue>,
+    pub frames: Vec<Option<StackFrame>>,
     pub trapped: bool,
 }
 
 impl Store {
     pub fn new() -> Self {
         Self {
-            instances: ManualVec::new(),
-            funcs: ManualVec::new(),
-            tables: ManualVec::new(),
-            memories: ManualVec::new(),
-            globals: ManualVec::new(),
+            instances: KVec::new(),
+            funcs: KVec::new(),
+            tables: KVec::new(),
+            memories: KVec::new(),
+            globals: KVec::new(),
             thread: ThreadData {
-                stack: ManualVec::new(),
-                frames: ManualVec::new(),
+                stack: Vec::new(),
+                frames: Vec::new(),
                 trapped: false,
             },
         }
     }
 
     pub fn new_instance(&mut self, wasm: &[u8], imports: &[(&str, &str, Extern)]) -> Result<InstanceId, Error> {
-        let instance_id = InstanceId {
-            id: self.instances.len().try_into().map_err(|_| Error::OOM)?,
-        };
+        let instance_id = self.instances.next_key();
 
-        let wasm = {
-            let mut v = ManualVec::new();
-            v.extend_from_slice_or_alloc(wasm).map_err(|_| Error::OOM)?;
-            v
-        };
-
-
+        let wasm = Vec::from_slice(wasm);
         let alloc = Arena::new();
 
-        let alloc_static = unsafe { core::mem::transmute::<&Arena, &Arena>(&alloc) };
         let wasm_static = unsafe { core::mem::transmute::<&[u8], &[u8]>(wasm.as_slice()) };
+        let alloc_static = unsafe { core::mem::transmute::<&Arena, &Arena>(&alloc) };
 
         let module = wasm::Parser::parse_module(wasm_static, Default::default(), alloc_static)
             .map_err(|e| match e {
@@ -271,20 +253,20 @@ impl Store {
 
 
         let num_funcs = module.imports.funcs.len() + module.funcs.len();
-        let mut funcs = ManualVec::with_cap(num_funcs).ok_or_else(|| Error::OOM)?;
-        self.funcs.reserve_extra(num_funcs).map_err(|_| Error::OOM)?;
-        if u32::try_from(self.funcs.len() + num_funcs).is_err() {
-            return Err(Error::OOM);
-        }
+        let mut funcs = KVec::with_cap(num_funcs);
+        self.funcs.inner_mut_unck().reserve_extra(num_funcs);
 
         let num_tables = module.imports.tables.len() + module.tables.len();
-        let mut tables = ManualVec::with_cap(num_tables).ok_or_else(|| Error::OOM)?;
+        let mut tables = KVec::with_cap(num_tables);
+        self.tables.inner_mut_unck().reserve_extra(num_tables);
 
         let num_memories = module.imports.memories.len() + module.memories.len();
-        let mut memories = ManualVec::with_cap(num_memories).ok_or_else(|| Error::OOM)?;
+        let mut memories = KVec::with_cap(num_memories);
+        self.memories.inner_mut_unck().reserve_extra(num_memories);
 
         let num_globals = module.imports.globals.len() + module.globals.len();
-        let mut globals = ManualVec::with_cap(num_globals).ok_or_else(|| Error::OOM)?;
+        let mut globals = KVec::with_cap(num_globals);
+        self.globals.inner_mut_unck().reserve_extra(num_globals);
 
         for import in module.imports.imports {
             let lookup_import = |module, name| {
@@ -304,7 +286,8 @@ impl Store {
                     let Extern::Func(func_id) = lookup_import(import.module, import.name)? else {
                         todo!()
                     };
-                    let func = self.funcs[func_id.id as usize].clone();
+
+                    let func = self.funcs[func_id].clone();
                     let func_ty = unsafe { &*func.get() }.ty;
                     if func_ty != ty {
                         dbg!(func_ty);
@@ -312,7 +295,7 @@ impl Store {
                         todo!()
                     }
 
-                    funcs.push(func).unwrap_debug();
+                    funcs.push(func);
                 }
 
                 wasm::ImportKind::Table(_) => {
@@ -327,7 +310,8 @@ impl Store {
                     let Extern::Global(global_id) = lookup_import(import.module, import.name)? else {
                         todo!()
                     };
-                    let global = self.globals[global_id.id as usize].clone();
+
+                    let global = self.globals[global_id].clone();
                     let g = Global::new(&global);
                     if g.ty() != ty.ty {
                         todo!()
@@ -336,7 +320,7 @@ impl Store {
                         todo!()
                     }
 
-                    globals.push(global).unwrap_debug();
+                    globals.push(global);
                 }
             }
         }
@@ -367,25 +351,23 @@ impl Store {
             let interp_func = compiler.end_func(instance_id)
                 .map_err(|e| Error::Validation(p.reader.offset(), e))?;
 
-            let id = FuncId {
-                id: self.funcs.len().try_into().map_err(|_| Error::OOM)?,
-            };
+            let id = self.funcs.next_key();
             let func = Rc::new(UnsafeCell::new(
                 FuncData { id, ty, kind: FuncKind::Interp(interp_func) }));
-            funcs.push(func.clone()).unwrap_debug();
-            self.funcs.push_or_alloc(func).map_err(|_| Error::OOM)?;
+            funcs.push(func.clone());
+            self.funcs.push(func);
         }
         debug_assert_eq!(funcs.len(), num_funcs);
 
         for tab in module.tables {
-            let id = self.new_table(tab.ty, tab.limits)?.id as usize;
-            tables.push(self.tables[id].clone()).unwrap_debug();
+            let id = self.new_table(tab.ty, tab.limits)?;
+            tables.push(self.tables[id].clone());
         }
         debug_assert_eq!(tables.len(), num_tables);
 
         for mem in module.memories {
-            let id = self.new_memory(mem.limits)?.id as usize;
-            memories.push(self.memories[id].clone()).unwrap_debug();
+            let id = self.new_memory(mem.limits)?;
+            memories.push(self.memories[id].clone());
         }
         debug_assert_eq!(memories.len(), num_memories);
 
@@ -395,15 +377,15 @@ impl Store {
                 wasm::ConstExpr::I64(v) => Value::I64(v),
                 wasm::ConstExpr::F32(v) => Value::F32(v),
                 wasm::ConstExpr::F64(v) => Value::F64(v),
-                wasm::ConstExpr::Global(idx) => Global::new(&globals[idx as usize]).get(),
+                wasm::ConstExpr::Global(idx) => Global::new(&globals.inner()[idx as usize]).get(),
                 wasm::ConstExpr::RefNull(ty) => match ty {
                     wasm::RefType::FuncRef => Value::FuncRef(RefValue::NULL),
                     wasm::RefType::ExternRef => Value::ExternRef(RefValue::NULL),
                 },
             };
 
-            let id = self.new_global(global.ty.mutable, init)?.id as usize;
-            globals.push(self.globals[id].clone()).unwrap_debug();
+            let id = self.new_global(global.ty.mutable, init);
+            globals.push(self.globals[id].clone());
         }
         debug_assert_eq!(globals.len(), num_globals);
 
@@ -413,7 +395,7 @@ impl Store {
                 wasm::ElementKind::Passive => (),
 
                 wasm::ElementKind::Active { table, offset } => {
-                    let mut tab = Table::new(&tables[table as usize]);
+                    let mut tab = Table::new(&tables.inner()[table as usize]);
                     let values = unsafe { tab.as_mut_slice() };
 
                     let Some(end) = (offset as usize).checked_add(elem.values.len()) else {
@@ -426,8 +408,9 @@ impl Store {
                     for i in 0..elem.values.len() {
                         match elem.ty {
                             wasm::RefType::FuncRef => {
-                                let func = unsafe { &*funcs[elem.values[i] as usize].get() };
-                                values[offset as usize + i] = RefValue { id: func.id.id };
+                                let idx = elem.values[i];
+                                let id = unsafe { &*funcs.inner()[idx as usize].get() }.id.inner();
+                                values[offset as usize + i] = RefValue { id };
                             }
 
                             wasm::RefType::ExternRef => todo!(),
@@ -445,7 +428,7 @@ impl Store {
                 wasm::DataKind::Passive => (),
 
                 wasm::DataKind::Active { mem, offset } => {
-                    let mut mem = Memory::new(&memories[mem as usize]);
+                    let mut mem = Memory::new(&memories.inner()[mem as usize]);
                     let (ptr, mem_len) = mem.as_mut_ptr();
 
                     let Some(end) = (offset as usize).checked_add(bytes.len()) else {
@@ -465,7 +448,7 @@ impl Store {
             }
         }
 
-        self.instances.push_or_alloc(Rc::new(UnsafeCell::new(InstanceData {
+        self.instances.push(Rc::new(UnsafeCell::new(InstanceData {
             id: instance_id,
             wasm,
             alloc,
@@ -474,22 +457,21 @@ impl Store {
             tables,
             memories,
             globals,
-        }))).map_err(|_| Error::OOM)?;
+        })));
 
         return Ok(instance_id);
     }
 
     pub fn get_export(&self, instance_id: InstanceId, name: &str) -> Result<Extern, Error> {
-        let inst = self.instances.get(instance_id.id as usize).ok_or_else(|| todo!())?;
-        let inst = unsafe { &*inst.get() };
+        let inst = unsafe { &*self.instances[instance_id].get() };
 
         for export in inst.module.exports {
             if export.name == name {
                 return Ok(match export.kind {
-                    wasm::ExportKind::Func(idx)   => Extern::Func(unsafe { &*inst.funcs[idx as usize].get() }.id),
-                    wasm::ExportKind::Table(idx)  => Extern::Table(Table::new(&inst.tables[idx as usize]).id()),
-                    wasm::ExportKind::Memory(idx) => Extern::Memory(Memory::new(&inst.memories[idx as usize]).id()),
-                    wasm::ExportKind::Global(idx) => Extern::Global(Global::new(&inst.globals[idx as usize]).id()),
+                    wasm::ExportKind::Func(idx)   => Extern::Func(unsafe { &*inst.funcs.inner()[idx as usize].get() }.id),
+                    wasm::ExportKind::Table(idx)  => Extern::Table(Table::new(&inst.tables.inner()[idx as usize]).id()),
+                    wasm::ExportKind::Memory(idx) => Extern::Memory(Memory::new(&inst.memories.inner()[idx as usize]).id()),
+                    wasm::ExportKind::Global(idx) => Extern::Global(Global::new(&inst.globals.inner()[idx as usize]).id()),
                 });
             }
         }
@@ -505,14 +487,12 @@ impl Store {
     }
 
     pub fn check_func_type<P: WasmTypes, R: WasmTypes>(&self, func_id: FuncId) -> Result<TypedFuncId<P, R>, Error> {
-        let func = self.funcs.get(func_id.id as usize).ok_or_else(|| Error::InvalidHandle)?;
-
-        let func = unsafe { &*func.get() };
+        let func = unsafe { &*self.funcs[func_id].get() };
         if func.ty.params != P::WASM_TYPES || func.ty.rets != R::WASM_TYPES {
             todo!()
         }
 
-        Ok(TypedFuncId { id: func_id.id, phantom: PhantomData })
+        Ok(TypedFuncId { func_id, phantom: PhantomData })
     }
 
     pub fn get_export_func<P: WasmTypes, R: WasmTypes>(&self, instance_id: InstanceId, name: &str) -> Result<TypedFuncId<P, R>, Error> {
@@ -542,8 +522,7 @@ impl Store {
     }
 
     pub fn call_dyn_ex<'r>(&mut self, func_id: FuncId, args: &[Value], rets: &'r mut [Value], allow_rets_mismatch: bool) -> Result<&'r mut [Value], Error> {
-        let func = self.funcs.get(func_id.id as usize).ok_or_else(|| Error::InvalidHandle)?;
-        let func = unsafe { &*func.get() };
+        let func = unsafe { &*self.funcs[func_id].get() };
 
         // @todo: this may not be safe in the future.
         //  a wasm function could delete its own instance/module.
@@ -569,12 +548,12 @@ impl Store {
 
         // push args onto stack.
         let bp = self.thread.stack.len();
-        self.thread.stack.reserve_extra(args.len().max(rets.len())).map_err(|_| Error::OOM)?;
+        self.thread.stack.reserve_extra(args.len().max(rets.len()));
         for arg in args {
-            self.thread.stack.push(StackValue::from_value(*arg)).unwrap_debug();
+            self.thread.stack.push(StackValue::from_value(*arg));
         }
 
-        if let Err(e) = self.run_func(func_id.id) {
+        if let Err(e) = self.run_func(func_id) {
             if is_root {
                 self.thread.stack.clear();
                 self.thread.frames.clear();
@@ -601,21 +580,20 @@ impl Store {
 
     // @todo: debug check types.
     pub fn call<P: WasmTypes, R: WasmTypes>(&mut self, func_id: TypedFuncId<P, R>, args: P) -> Result<R, Error> {
-        let func = self.funcs.get(func_id.id as usize).ok_or_else(|| Error::InvalidHandle)?;
-        let func = unsafe { &*func.get() };
+        let func = unsafe { &*self.funcs[func_id.func_id].get() };
         debug_assert_eq!(func.ty.params, P::WASM_TYPES);
         debug_assert_eq!(func.ty.rets,   R::WASM_TYPES);
 
         // push args onto stack.
         let stack = &mut self.thread.stack;
         let bp = stack.len();
-        stack.reserve_extra(P::WASM_TYPES.len().max(R::WASM_TYPES.len())).map_err(|_| Error::OOM)?;
+        stack.reserve_extra(P::WASM_TYPES.len().max(R::WASM_TYPES.len()));
         unsafe {
             args.to_stack_values(stack.as_mut_ptr().add(bp));
             stack.set_len(bp + P::WASM_TYPES.len());
         }
 
-        self.run_func(func_id.id)?;
+        self.run_func(func_id.func_id)?;
 
         let stack = &mut self.thread.stack;
         debug_assert_eq!(stack.len(), bp + R::WASM_TYPES.len());
@@ -627,16 +605,16 @@ impl Store {
         return Ok(result);
     }
 
-    fn run_func(&mut self, id: u32) -> Result<(), Error> {
+    fn run_func(&mut self, id: FuncId) -> Result<(), Error> {
         let stack = &mut self.thread.stack;
 
         let old_num_frames = self.thread.frames.len();
 
-        let mut func = unsafe { &*self.funcs[id as usize].get() };
+        let mut func = unsafe { &*self.funcs[id].get() };
         while let FuncKind::Var(val) = &func.kind {
             func = unsafe { &*val.as_ref().unwrap().get() };
         }
-        let id = func.id.id;
+        let id = func.id;
 
         let result = match &func.kind {
             FuncKind::Interp(f) => {
@@ -661,20 +639,20 @@ impl Store {
     }
 
     pub fn new_host_func<P: WasmTypes, R: WasmTypes, const STORE: bool, H: HostFunc<P, R, STORE>>
-        (&mut self, f: H) -> Result<TypedFuncId<P, R>, Error>
+        (&mut self, f: H) -> TypedFuncId<P, R>
     {
         let id = TypedFuncId {
-            id: self.funcs.len().try_into().map_err(|_| Error::OOM)?,
+            func_id: self.funcs.next_key(),
             phantom: PhantomData,
         };
 
-        self.funcs.push_or_alloc(Rc::new(UnsafeCell::new(FuncData {
-            id: id.func(),
+        self.funcs.push(Rc::new(UnsafeCell::new(FuncData {
+            id: id.func_id,
             ty: wasm::FuncType { params: P::WASM_TYPES, rets: R::WASM_TYPES },
             kind: FuncKind::Host(
                 HostFuncData {
                     data: {
-                        let data = Box::try_new_in(GlobalAlloc, f).ok_or(Error::OOM)?;
+                        let data = Box::new(f);
                         let (data, alloc) = data.into_raw_parts();
                         unsafe { Box::from_raw_parts(data as NonNull<dyn Any>, alloc) }
                     },
@@ -685,28 +663,28 @@ impl Store {
                     num_params: P::WASM_TYPES.len().try_into().unwrap(),
                     num_rets: R::WASM_TYPES.len().try_into().unwrap(),
                 })
-        }))).map_err(|_| Error::OOM)?;
+        })));
 
-        return Ok(id);
+        return id;
     }
 
-    pub fn new_func_var<P: WasmTypes, R: WasmTypes>(&mut self) -> Result<TypedFuncId<P, R>, Error> {
+    pub fn new_func_var<P: WasmTypes, R: WasmTypes>(&mut self) -> TypedFuncId<P, R> {
         let id = TypedFuncId {
-            id: self.funcs.len().try_into().map_err(|_| Error::OOM)?,
+            func_id: self.funcs.next_key(),
             phantom: PhantomData,
         };
 
-        self.funcs.push_or_alloc(Rc::new(UnsafeCell::new(FuncData {
-            id: id.func(),
+        self.funcs.push(Rc::new(UnsafeCell::new(FuncData {
+            id: id.func_id,
             ty: wasm::FuncType { params: P::WASM_TYPES, rets: R::WASM_TYPES },
             kind: FuncKind::Var(None),
-        }))).map_err(|_| Error::OOM)?;
+        })));
 
-        return Ok(id);
+        return id;
     }
 
     pub fn assign_func_var<P: WasmTypes, R: WasmTypes>(&mut self, var: TypedFuncId<P, R>, value: TypedFuncId<P, R>) -> Result<(), Error> {
-        let Some(mut value) = self.funcs.get(value.id as usize) else { todo!() };
+        let mut value = &self.funcs[value.func_id];
         {
             let v = unsafe { &*value.get() };
             debug_assert!(v.ty.params == P::WASM_TYPES && v.ty.rets == R::WASM_TYPES);
@@ -716,15 +694,14 @@ impl Store {
         loop {
             let v = unsafe { &*value.get() };
             let FuncKind::Var(val) = &v.kind else { break };
-            if v.id.id == var.id {
+            if v.id == var.func_id {
                 todo!()
             }
             let Some(val) = &val else { break };
             value = val;
         }
 
-        let Some(var) = self.funcs.get(var.id as usize) else { todo!() };
-        let var = unsafe { &mut *var.get() };
+        let var = unsafe { &mut *self.funcs[var.func_id].get() };
         debug_assert!(var.ty.params == P::WASM_TYPES && var.ty.rets == R::WASM_TYPES);
 
         let FuncKind::Var(v) = &mut var.kind else { todo!() };
@@ -734,56 +711,45 @@ impl Store {
     }
 
     pub fn new_table(&mut self, ty: wasm::RefType, limits: wasm::Limits) -> Result<TableId, Error> {
-        let id = TableId {
-            id: self.tables.len().try_into().map_err(|_| Error::OOM)?,
-        };
-
+        let id = self.tables.next_key();
         let table = TableData::new(id, ty, limits, RefValue::NULL)?;
         let table = Rc::new(UnsafeCell::new(table));
-        self.tables.push_or_alloc(table).map_err(|_| Error::OOM)?;
+        self.tables.push(table);
         return Ok(id);
     }
 
     pub fn new_memory(&mut self, limits: wasm::Limits) -> Result<MemoryId, Error> {
-        let id = MemoryId {
-            id: self.memories.len().try_into().map_err(|_| Error::OOM)?,
-        };
-
+        let id = self.memories.next_key();
         let memory = MemoryData::new(id, limits)?;
         let memory = Rc::new(UnsafeCell::new(memory));
-        self.memories.push_or_alloc(memory).map_err(|_| Error::OOM)?;
+        self.memories.push(memory);
         return Ok(id);
     }
 
-    pub fn memory<'a>(&'a self, id: MemoryId) -> Result<Memory<'a>, Error> {
-        Ok(Memory::new(
-            self.memories.get(id.id as usize)
-            .ok_or(Error::InvalidHandle)?))
+    pub fn memory<'a>(&'a self, id: MemoryId) -> Memory<'a> {
+        Memory::new(&self.memories[id])
     }
 
-    pub fn new_global(&mut self, mutable: bool, value: Value) -> Result<GlobalId, Error> {
-        let id = GlobalId {
-            id: self.globals.len().try_into().map_err(|_| Error::OOM)?,
-        };
-
+    pub fn new_global(&mut self, mutable: bool, value: Value) -> GlobalId {
+        let id = self.globals.next_key();
         let global = GlobalData::new(id, mutable, value);
         let global = Rc::new(UnsafeCell::new(global));
-        self.globals.push_or_alloc(global).map_err(|_| Error::OOM)?;
-        return Ok(id);
+        self.globals.push(global);
+        return id;
     }
 
 
     pub fn caller_instance(&self) -> Result<InstanceId, Error> {
         // @speed: cache?
         let Some(Some(frame)) = self.thread.frames.last() else { return Err(Error::CallerNotWasm) };
-        return Ok(InstanceId { id: frame.instance });
+        return Ok(frame.instance);
     }
 
     pub fn caller_memory<'a>(&'a self) -> Result<Memory<'a>, Error> {
         // @speed: cache?
         let Some(Some(frame)) = self.thread.frames.last() else { return Err(Error::CallerNotWasm) };
-        let inst = unsafe { &*self.instances[frame.instance as usize].get() };
-        let Some(mem) = inst.memories.get(0) else { return Err(Error::CallerNoMemory) };
+        let inst = unsafe { &*self.instances[frame.instance].get() };
+        let Some(mem) = inst.memories.inner().get(0) else { return Err(Error::CallerNoMemory) };
         return Ok(Memory::new(mem));
     }
 }

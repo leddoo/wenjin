@@ -7,12 +7,12 @@ fn host_func() {
 
     let add = store.new_host_func(|a: i32, b: i32| {
         a + b
-    }).unwrap();
+    });
 
     assert_eq!(store.call(add, (33, 36)).unwrap(), 69);
 
 
-    let fib_guest = store.new_func_var::<i32, i32>().unwrap();
+    let fib_guest = store.new_func_var::<i32, i32>();
 
     let fib_host = store.new_host_func({ let fib_guest = fib_guest.clone();
         move |store: &mut Store, n: i32| {
@@ -23,7 +23,7 @@ fn host_func() {
                 store.call(fib_guest, n-2)? + store.call(fib_guest, n-1)?
             })
         }
-    }).unwrap();
+    });
 
     let inst = store.new_instance(include_bytes!("host_func.wasm"),
         &[("host", "fib_host", fib_host.into())]).unwrap();

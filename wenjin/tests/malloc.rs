@@ -108,7 +108,7 @@ fn malloc() {
         assert_eq!(new_free, old_free + free_size);
 
         return Ok(<WasmPtr<u8>>::new(used_header.addr + BlockHeader::SIZE));
-    }).unwrap();
+    });
 
 
     let fail = store.new_host_func(|store: &mut Store, msg: WasmPtr<u8>| {
@@ -119,7 +119,7 @@ fn malloc() {
         let msg = core::str::from_utf8(&buf).unwrap();
         println!("failed with {:?}", msg);
         assert!(false);
-    }).unwrap();
+    });
 
     let inst = store.new_instance(include_bytes!("malloc.wasm"), &[
         ("host", "malloc", malloc.into()),
@@ -145,7 +145,7 @@ fn malloc() {
         return 0;
     }
 
-    let mem = store.memory(store.get_export_memory(inst, "memory").unwrap()).unwrap();
+    let mem = store.memory(store.get_export_memory(inst, "memory").unwrap());
     let sum = tree_sum(mem, tree);
     assert_eq!(sum, 1+2+3+4+5+6+7+8);
 }

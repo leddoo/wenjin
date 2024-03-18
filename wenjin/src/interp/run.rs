@@ -2,13 +2,13 @@ use core::hint::unreachable_unchecked;
 
 use sti::traits::UnwrapDebug;
 
-use crate::{Error, Table, Memory, Global};
-use crate::store::{Store, FuncKind, StackValue, StackFrame};
+use crate::{Error, Table, Memory, Global, InstanceId};
+use crate::store::{Store, FuncKind, StackValue, StackFrame, FuncId};
 
 
 struct State {
-    instance: u32,
-    func: u32,
+    instance: InstanceId,
+    func: FuncId,
 
     pc: *mut u8,
     code_begin: *const u8,
@@ -188,17 +188,15 @@ impl State {
 }
 
 impl Store {
-    pub(crate) fn run_interp(&mut self, init_func: u32) -> (Result<(), Error>,) {
+    pub(crate) fn run_interp(&mut self, init_func: FuncId) -> (Result<(), Error>,) {
         assert!(!self.thread.trapped);
 
         let mut state = unsafe {
-            let func = &*self.funcs[init_func as usize].get();
+            let func = &*self.funcs[init_func].get();
             let FuncKind::Interp(f) = &func.kind else { unreachable!() };
 
             let stack = &mut self.thread.stack;
-            if stack.reserve_extra((f.stack_size - f.num_params) as usize).is_err() {
-                todo!()
-            }
+            stack.reserve_extra((f.stack_size - f.num_params) as usize);
 
             let stack_ptr = stack.as_mut_ptr();
 
@@ -215,24 +213,22 @@ impl Store {
             let sp = locals_end;
 
 
-            let inst = &*self.instances[f.instance.id as usize].get();
+            let inst = &*self.instances[f.instance].get();
 
             let mut memory_data = None;
             let mut memory = core::ptr::null_mut();
             let mut memory_size = 0;
-            if let Some(mem) = inst.memories.get(0) {
+            if let Some(mem) = inst.memories.inner().get(0) {
                 let mut mem = Memory::new(mem);
                 (memory, memory_size) = mem.as_mut_ptr();
                 memory_data = Some(mem);
             }
 
 
-            if let Err(()) = self.thread.frames.push_or_alloc(None) {
-                todo!()
-            }
+            self.thread.frames.push(None);
 
             State {
-                instance: f.instance.id,
+                instance: f.instance,
                 func: init_func,
                 pc: f.code_begin(),
                 code_begin: f.code_begin(),
@@ -331,20 +327,20 @@ impl Store {
                         let bp = state.bp.sub(frame.bp_offset as usize);
                         let sp = state.bp.add(num_rets);
 
-                        let func = &*self.funcs[frame.func as usize].get();
+                        let func = &*self.funcs[frame.func].get();
                         let FuncKind::Interp(f) = &func.kind else { unreachable_unchecked() };
 
                         let mut memory_data = state.memory_data;
                         let mut memory = state.memory;
                         let mut memory_size = state.memory_size;
                         if frame.instance != state.instance {
-                            let inst = &*self.instances[frame.instance as usize].get();
+                            let inst = &*self.instances[frame.instance].get();
 
                             memory_data = None;
                             memory = core::ptr::null_mut();
                             memory_size = 0;
 
-                            if let Some(mem) = inst.memories.get(0) {
+                            if let Some(mem) = inst.memories.inner().get(0) {
                                 let mut mem = Memory::new(mem);
                                 (memory, memory_size) = mem.as_mut_ptr();
                                 memory_data = Some(mem);
@@ -380,16 +376,16 @@ impl Store {
                     let mut func = if op == wasm::opcode::CALL {
                         let func_idx = state.next_u32();
 
-                        let inst = unsafe { &*self.instances[state.instance as usize].get() };
-                        unsafe { &*inst.funcs[func_idx as usize].get() }
+                        let inst = unsafe { &*self.instances[state.instance].get() };
+                        unsafe { &*inst.funcs.inner()[func_idx as usize].get() }
                     }
                     else {
                         let type_idx = state.next_u32();
                         let tab_idx = state.next_u32();
                         let i = state.pop().as_i32() as usize;
 
-                        let inst = unsafe { &*self.instances[state.instance as usize].get() };
-                        let tab = Table::new(&inst.tables[tab_idx as usize]);
+                        let inst = unsafe { &*self.instances[state.instance].get() };
+                        let tab = Table::new(&inst.tables.inner()[tab_idx as usize]);
 
                         let Some(id) = unsafe { tab.as_slice() }.get(i) else {
                             vm_err!(Error::TrapTableBounds);
@@ -398,7 +394,7 @@ impl Store {
                             vm_err!(Error::TrapCallIndirectRefNull);
                         };
 
-                        let func = unsafe { &*self.funcs[func_id as usize].get() };
+                        let func = unsafe { &*self.funcs.inner()[func_id as usize].get() };
 
                         let expected_ty = inst.module.types[type_idx as usize];
                         if func.ty != expected_ty {
@@ -428,9 +424,7 @@ impl Store {
 
                                 let stack_len = state.sp.offset_from(stack.as_ptr()) as usize;
                                 stack.set_len(stack_len);
-                                if stack.reserve_extra(stack_required).is_err() {
-                                    todo!()
-                                }
+                                stack.reserve_extra(stack_required);
 
                                 let stack_ptr = stack.as_mut_ptr();
                                 sp = stack_ptr.add(stack_len);
@@ -453,21 +447,19 @@ impl Store {
                                 pc: core::ptr::NonNull::new_unchecked(state.pc),
                                 bp_offset,
                             };
-                            if self.thread.frames.push_or_alloc(Some(frame)).is_err() {
-                                todo!()
-                            }
+                            self.thread.frames.push(Some(frame));
 
                             let mut memory_data = state.memory_data;
                             let mut memory = state.memory;
                             let mut memory_size = state.memory_size;
-                            if f.instance.id != state.instance {
-                                let inst = &*self.instances[f.instance.id as usize].get();
+                            if f.instance != state.instance {
+                                let inst = &*self.instances[f.instance].get();
 
                                 memory_data = None;
                                 memory = core::ptr::null_mut();
                                 memory_size = 0;
 
-                                if let Some(mem) = inst.memories.get(0) {
+                                if let Some(mem) = inst.memories.inner().get(0) {
                                     let mut mem = Memory::new(mem);
                                     (memory, memory_size) = mem.as_mut_ptr();
                                     memory_data = Some(mem);
@@ -475,8 +467,8 @@ impl Store {
                             }
 
                             state = State {
-                                instance: f.instance.id,
-                                func: func.id.id,
+                                instance: f.instance,
+                                func: func.id,
                                 pc: f.code_begin(),
                                 code_begin: f.code_begin(),
                                 code_end: f.code_end(),
@@ -503,9 +495,7 @@ impl Store {
                             stack.set_len(sp);
 
                             let stack_required = sp - f.num_params as usize + f.num_rets as usize;
-                            if stack.reserve(stack_required).is_err() {
-                                todo!()
-                            }
+                            stack.reserve(stack_required);
 
                             let frame = StackFrame {
                                 instance: state.instance,
@@ -513,9 +503,7 @@ impl Store {
                                 pc: core::ptr::NonNull::new_unchecked(state.pc),
                                 bp_offset,
                             };
-                            if self.thread.frames.push_or_alloc(Some(frame)).is_err() {
-                                todo!()
-                            }
+                            self.thread.frames.push(Some(frame));
 
                             if (f.call)(&*f.data as *const _ as *const u8, self).is_err() {
                                 todo!()
@@ -586,15 +574,15 @@ impl Store {
 
                 wasm::opcode::GLOBAL_GET => {
                     let idx = state.next_u32();
-                    let inst = unsafe { &*self.instances[state.instance as usize].get() };
-                    let global = Global::new(&inst.globals[idx as usize]);
+                    let inst = unsafe { &*self.instances[state.instance].get() };
+                    let global = Global::new(&inst.globals.inner()[idx as usize]);
                     state.push(StackValue::from_value(global.get()));
                 }
 
                 wasm::opcode::GLOBAL_SET => {
                     let idx = state.next_u32();
-                    let inst = unsafe { &*self.instances[state.instance as usize].get() };
-                    let mut global = Global::new(&inst.globals[idx as usize]);
+                    let inst = unsafe { &*self.instances[state.instance].get() };
+                    let mut global = Global::new(&inst.globals.inner()[idx as usize]);
                     global.set(state.pop().to_value(global.get().ty()));
                 }
 

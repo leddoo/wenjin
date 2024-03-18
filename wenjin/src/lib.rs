@@ -12,8 +12,6 @@ pub enum Error {
     Parse(wasm::ParseError),
     Validation(usize, wasm::ValidatorError),
     MissingImport,
-    InvalidHandle,
-    Unimplemented,
     CallerNotWasm,
     CallerNoMemory,
     TrapUnreachable,
@@ -23,6 +21,7 @@ pub enum Error {
     TrapCallIndirectTypeMismatch,
     TrapDivZero,
     OOM,
+    Unimplemented,
     Todo,
 }
 

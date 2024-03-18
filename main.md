@@ -1,7 +1,5 @@
 
 - todo:
-    - no oom/invalid handle.
-        - store: use kvec.
     - unified stack.
         - stack compression.
     - put missing end logic into validator (end function).

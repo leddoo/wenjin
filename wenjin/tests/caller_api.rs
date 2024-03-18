@@ -21,7 +21,7 @@ fn caller_api() {
 
             _ => unreachable!(),
         }
-    }}).unwrap();
+    }});
 
     store.call(host_func, 0).unwrap();
 
