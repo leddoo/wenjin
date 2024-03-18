@@ -11,6 +11,7 @@ mod interp;
 pub enum Error {
     Parse(wasm::ParseError),
     Validation(usize, wasm::ValidatorError),
+    MissingImport,
     InvalidHandle,
     Unimplemented,
     CallerNotWasm,

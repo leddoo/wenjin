@@ -15,6 +15,7 @@ pub enum ValidatorError {
     FrameExtraStack,
     UnexpectedElse,
     UnexpectedEnd,
+    MissingEnd,
     InvalidLabel,
     InvalidTypeIdx,
     InvalidFuncIdx,

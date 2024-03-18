@@ -333,6 +333,12 @@ pub struct CustomSection<'a> {
     pub data: &'a [u8],
 }
 
+impl<'a> core::fmt::Debug for CustomSection<'a> {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        writeln!(f, "CustomSection({:?})", self.name)
+    }
+}
+
 
 #[derive(Clone, Copy, Debug)]
 pub struct ModuleLimits {
@@ -387,7 +393,7 @@ impl Default for ModuleLimits {
 }
 
 
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Module<'a> {
     pub types:      &'a [FuncType<'a>],
     pub imports:    Imports<'a>,

@@ -287,6 +287,9 @@ impl Store {
                     debug_assert_eq!(validator.is_unreachable(), compiler.is_unreachable());
                 }
             }
+            if validator.num_frames() != 0 {
+                return Err(Error::Validation(p.reader.offset(), wasm::ValidatorError::MissingEnd));
+            }
             assert!(validator.num_stack() == 0
                 && validator.num_frames() == 0
                 && compiler.num_stack() == 0
@@ -348,7 +351,8 @@ impl Store {
                         return Ok(import);
                     }
                 }
-                todo!();
+                println!("missing import {module:?} {name:?}");
+                return Err(Error::MissingImport);
             };
 
             match import.kind {
