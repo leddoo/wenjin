@@ -284,10 +284,9 @@ impl Store {
                     }
                 }
 
-                wasm::opcode::ELSE => {}
-
                 wasm::opcode::END => {}
 
+                wasm::opcode::ELSE |
                 wasm::opcode::BR => {
                     let dst = state.next_jump();
                     let shift = state.next_shift();

@@ -8,8 +8,7 @@ use wasm::{ValueType, BlockType, TypeIdx, FuncIdx, TableIdx, MemoryIdx, GlobalId
 
 /*
 - instructions:
-    - most instructions are mapped 1:1 for ease of debugging.
-    - `if` & `loop` have an additional `br` instruction.
+    - instructions are mapped 1:1 for ease of debugging.
     - all `u32` operands are stored in 4 byte, native endian format.
     - jumps: see below.
 
@@ -281,8 +280,7 @@ impl<'a> wasm::OperatorVisitor<'a> for Compiler<'a> {
     }
 
     fn visit_else(&mut self) -> Self::Output {
-        // jump to end (for then branch).
-        self.add_byte(opcode::BR);
+        self.add_byte(opcode::ELSE);
         self.jump_and_shift(0);
 
         let frame = self.pop_frame_core();
@@ -292,8 +290,6 @@ impl<'a> wasm::OperatorVisitor<'a> for Compiler<'a> {
 
         let else_offset = self.code.len() as u32;
         self.patch_jumps(else_use, else_offset);
-
-        self.add_byte(opcode::ELSE);
     }
 
     fn visit_end(&mut self) -> Self::Output {
