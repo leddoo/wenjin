@@ -19,13 +19,16 @@
       this hashmap could also be used to validate that an offset is a valid
       opcode, for setting breakpoints.
 
+- rw#2:
+    - table driven parser.
+        - generate parse table.
+    - effect driven validator.
+        - generate effects table.
+    - immutable type stack.
+    - optionally generate pc -> type top & pc -> br hash-maps.
+    - wasm interp.
+
 - todo:
-    - rw#2:
-        - table driven parser.
-        - effect driven validator.
-        - immutable type stack.
-        - optionally generate pc -> type top & pc -> br hash-maps.
-        - wasm interp.
     - unified stack.
         - 4 bit sp offset from frame.
         - account for `StackFrame` in bounds check.
