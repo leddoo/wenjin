@@ -19,6 +19,8 @@ fn parse_and_validate<'a>(wasm: &'a [u8], alloc: &'a Arena) -> Module<'a> {
             //valid.unwrap();
             p.parse_operator_with(&mut validator).unwrap().unwrap();
         }
+
+        validator.end_func().unwrap();
     }
 
     return module;
