@@ -20,10 +20,11 @@
       opcode, for setting breakpoints.
 
 - rw#2:
-    - table driven parser.
-        - generate parse table.
-    - effect driven validator.
-        - generate effects table.
+    - table driven validator.
+        - generate opcode class table.
+        - generate push/pop tables.
+        - class dependent validation.
+        - generate unreachable table.
     - immutable type stack.
     - optionally generate pc -> type top & pc -> br hash-maps.
     - wasm interp.
