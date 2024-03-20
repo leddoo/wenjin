@@ -1,18 +1,23 @@
 use core::hint::unreachable_unchecked;
 
 use sti::traits::UnwrapDebug;
+use sti::hash::HashMap;
+
+use wasm::Opcode;
 
 use crate::{Error, Table, Memory, Global, InstanceId};
 use crate::store::{Store, FuncKind, StackValue, StackFrame, FuncId};
 
 
+#[derive(Debug)]
 struct State {
     instance: InstanceId,
     func: FuncId,
 
-    pc: *mut u8,
+    pc: *const u8,
     code_begin: *const u8,
     code_end: *const u8,
+    jumps: *const HashMap<u32, wasm::Jump>,
 
     bp: *mut StackValue,
     sp: *mut StackValue,
@@ -62,17 +67,9 @@ impl State {
 
 
     #[inline]
-    fn skip_n(&mut self, n: usize) {
-        unsafe {
-            debug_assert!(self.pc as usize + n <= self.code_end as usize);
-            self.pc = self.pc.add(n);
-        }
-    }
-
-    #[inline]
     fn next_u8(&mut self) -> u8 {
         unsafe {
-            debug_assert!(self.code_end as usize - self.pc as usize > 0);
+            debug_assert!(self.code_end as usize - self.pc as usize >= 1);
             let result = *self.pc;
             self.pc = self.pc.add(1);
             result
@@ -81,26 +78,113 @@ impl State {
 
     #[inline]
     fn next_u32(&mut self) -> u32 {
+        let at = self.next_u8();
+        if at & 0x80 == 0 {
+            return at as u32;
+        }
+
+        let mut result = (at & 0x7f) as u32;
+        let mut shift  = 7;
+        loop {
+            let at = self.next_u8();
+            result |= ((at & 0x7f) as u32) << shift;
+            shift  += 7;
+            if at & 0x80 == 0 { return result }
+        }
+    }
+
+    #[inline]
+    fn next_u64(&mut self) -> u64 {
+        let at = self.next_u8();
+        if at & 0x80 == 0 {
+            return at as u64;
+        }
+
+        let mut result = (at & 0x7f) as u64;
+        let mut shift  = 7;
+        loop {
+            let at = self.next_u8();
+            result |= ((at & 0x7f) as u64) << shift;
+            shift  += 7;
+            if at & 0x80 == 0 { return result }
+        }
+    }
+
+    #[inline]
+    fn next_i32(&mut self) -> i32 {
+        self.next_i64() as i32
+    }
+
+    #[inline]
+    fn next_i64(&mut self) -> i64 {
+        let mut result = 0;
+        let mut shift  = 0;
+        loop {
+            let byte = self.next_u8();
+            result |= ((byte & 0x7f) as i64) << shift;
+            shift  += 7;
+
+            if byte & 0x80 == 0 {
+                // sign extend.
+                const SIGN: u8 = 0x40;
+                if shift < 64 && (byte & SIGN) == SIGN {
+                    result |= !0 << shift;
+                }
+                return result;
+            }
+        }
+    }
+
+    #[inline]
+    fn next_f32(&mut self) -> f32 {
         unsafe {
             debug_assert!(self.code_end as usize - self.pc as usize >= 4);
-            let result = (self.pc as *const u32).read_unaligned();
+            let result = self.pc.cast::<f32>().read_unaligned();
             self.pc = self.pc.add(4);
             result
         }
     }
 
     #[inline]
-    fn next_u64(&mut self) -> u64 {
+    fn next_f64(&mut self) -> f64 {
         unsafe {
             debug_assert!(self.code_end as usize - self.pc as usize >= 8);
-            let result = (self.pc as *const u64).read_unaligned();
+            let result = self.pc.cast::<f64>().read_unaligned();
             self.pc = self.pc.add(8);
             result
         }
     }
 
     #[inline]
-    fn next_jump(&mut self) -> (*mut u8, i32) {
+    fn jump(&mut self, from_pc: *const u8) {
+        let from = (from_pc as usize - self.code_begin as usize) as u32;
+
+        let jump = unsafe { &*self.jumps }[&from];
+        dbg!(jump);
+        let wasm::Jump { target, shift_num, shift_by } = jump;
+
+        if shift_by != 0 { unsafe {
+            let src = self.sp.sub(shift_num as usize);
+            let dst = src.sub(shift_by as usize);
+            if shift_num == 1 {
+                *dst = *src;
+            }
+            else {
+                core::ptr::copy(src, dst, shift_num as usize);
+            }
+            self.sp = self.sp.sub(shift_by as usize);
+        }}
+
+        debug_assert!({
+            let code_len = self.code_end as usize - self.code_begin as usize;
+            (target as usize) < code_len
+        });
+        self.pc = unsafe { self.code_begin.add(target as usize) };
+    }
+
+    /*
+    #[inline]
+    fn next_jump(&mut self) -> (*const u8, i32) {
         (self.pc, self.next_u32() as i32)
     }
 
@@ -137,6 +221,7 @@ impl State {
             self.sp = self.sp.sub(shift_by as usize);
         }}
     }
+    */
 
     #[inline]
     fn mem_bounds_check(&self, addr: u32, offset: u32, size: u32) -> Result<(), Error> {
@@ -162,6 +247,7 @@ impl State {
 
     #[inline]
     fn load_op<const N: usize>(&mut self) -> Result<[u8; N], Error> {
+        let _align = self.next_u32();
         let offset = self.next_u32();
         let addr = self.pop().as_i32() as u32;
         self.load(addr, offset)
@@ -181,6 +267,7 @@ impl State {
     #[must_use]
     #[inline]
     fn store_op<const N: usize>(&mut self, value: [u8; N]) -> Result<(), Error> {
+        let _align = self.next_u32();
         let offset = self.next_u32();
         let addr = self.pop().as_i32() as u32;
         self.store(addr, offset, value)
@@ -190,6 +277,8 @@ impl State {
 impl Store {
     pub(crate) fn run_interp(&mut self, init_func: FuncId) -> (Result<(), Error>,) {
         assert!(!self.thread.trapped);
+
+        dbg!(init_func);
 
         let mut state = unsafe {
             let func = &*self.funcs[init_func].get();
@@ -233,6 +322,7 @@ impl Store {
                 pc: f.code_begin(),
                 code_begin: f.code_begin(),
                 code_end: f.code_end(),
+                jumps: &f.jumps as *const _,
                 bp,
                 sp,
                 locals_end,
@@ -260,62 +350,81 @@ impl Store {
                 };
             }
 
-            let op = state.next_u8();
+            let op = unsafe { match Opcode::parse(state.next_u8()) {
+                wasm::opcode::ParseResult::Opcode(op) => op,
+
+                wasm::opcode::ParseResult::Prefix(p) =>
+                    Opcode::parse_prefixed(p, state.next_u32())
+                        .unwrap_unchecked(),
+
+                wasm::opcode::ParseResult::Error =>
+                    unreachable_unchecked(),
+            }};
+            print!("{op:?} {}\n", (state.sp as usize - state.locals_end as usize)/8);
             match op {
-                _ => todo!()
-                /* @rework
-                wasm::opcode::UNREACHABLE => {
+                Opcode::Unreachable => {
                     vm_err!(Error::TrapUnreachable);
                 }
 
-                wasm::opcode::NOP => {}
+                Opcode::Nop => {}
 
-                wasm::opcode::BLOCK => {}
+                Opcode::Block => {
+                    let _ty = state.next_u64();
+                }
 
-                wasm::opcode::LOOP => {}
+                Opcode::Loop => {
+                    let _ty = state.next_u64();
+                }
 
-                wasm::opcode::IF => {
-                    let els = state.next_jump();
+                Opcode::If => {
+                    let _ty = state.next_u64();
+                    let this = state.pc;
                     let cond = state.pop().as_i32();
                     if cond == 0 {
-                        state.jump(els);
+                        state.jump(this);
                     }
                 }
 
-                wasm::opcode::END => {}
-
-                wasm::opcode::ELSE |
-                wasm::opcode::BR => {
-                    let dst = state.next_jump();
-                    let shift = state.next_shift();
-                    state.jump_and_shift(dst, shift);
+                Opcode::Else => {
+                    let this = state.pc;
+                    state.jump(this);
                 }
 
-                wasm::opcode::BR_IF => {
-                    let dst = state.next_jump();
-                    let shift = state.next_shift();
+                Opcode::Br => {
+                    let _label = state.next_u32();
+                    let this = state.pc;
+                    state.jump(this);
+                }
+
+                Opcode::BrIf => {
+                    let _label = state.next_u32();
+                    let this = state.pc;
                     let cond = state.pop().as_i32();
                     if cond != 0 {
-                        state.jump_and_shift(dst, shift);
+                        state.jump(this);
                     }
                 }
 
-                wasm::opcode::BR_TABLE => {
-                    let i = state.pop().as_i32() as usize;
-                    let num_labels = state.next_u32() as usize;
-                    if i < num_labels {
-                        state.skip_n(i*12);
-                    }
-                    else {
-                        state.skip_n(num_labels*12);
-                    }
-                    let dst = state.next_jump();
-                    let shift = state.next_shift();
-                    state.jump_and_shift(dst, shift);
+                Opcode::BrTable => {
+                    let this = state.pc;
+
+                    let num_labels = state.next_u32();
+
+                    let i = state.pop().as_i32() as u32;
+                    let i = if i < num_labels { i + 1 } else { 0 };
+
+                    state.jump(unsafe { this.add(i as usize) });
                 }
 
-                wasm::opcode::RETURN => unsafe {
-                    let num_rets = state.next_u32() as usize;
+                Opcode::End |
+                Opcode::Return => 'no_ret: { unsafe {
+                    if op == Opcode::End && state.pc != state.code_end {
+                        break 'no_ret;
+                    }
+
+                    let f = &*self.funcs[state.func].get();
+                    let num_rets = f.ty.rets.len();
+
                     let rets = state.sp.sub(num_rets);
                     if num_rets == 1 {
                         *state.bp = *rets;
@@ -355,6 +464,7 @@ impl Store {
                             pc: frame.pc.as_ptr(),
                             code_begin: f.code_begin(),
                             code_end: f.code_end(),
+                            jumps: &f.jumps as *const _,
                             bp,
                             sp,
                             locals_end: bp.add(f.num_locals as usize),
@@ -372,10 +482,10 @@ impl Store {
 
                         return (Ok(()),);
                     }
-                }
+                }}
 
-                wasm::opcode::CALL | wasm::opcode::CALL_INDIRECT => {
-                    let mut func = if op == wasm::opcode::CALL {
+                Opcode::Call | Opcode::CallIndirect => {
+                    let mut func = if op == Opcode::Call {
                         let func_idx = state.next_u32();
 
                         let inst = unsafe { &*self.instances[state.instance].get() };
@@ -446,7 +556,7 @@ impl Store {
                             let frame = StackFrame {
                                 instance: state.instance,
                                 func: state.func,
-                                pc: core::ptr::NonNull::new_unchecked(state.pc),
+                                pc: core::ptr::NonNull::new_unchecked(state.pc as *mut u8),
                                 bp_offset,
                             };
                             self.thread.frames.push(Some(frame));
@@ -474,6 +584,7 @@ impl Store {
                                 pc: f.code_begin(),
                                 code_begin: f.code_begin(),
                                 code_end: f.code_end(),
+                                jumps: &f.jumps as *const _,
                                 bp,
                                 sp,
                                 locals_end,
@@ -502,7 +613,7 @@ impl Store {
                             let frame = StackFrame {
                                 instance: state.instance,
                                 func: state.func,
-                                pc: core::ptr::NonNull::new_unchecked(state.pc),
+                                pc: core::ptr::NonNull::new_unchecked(state.pc as *mut u8),
                                 bp_offset,
                             };
                             self.thread.frames.push(Some(frame));
@@ -529,6 +640,7 @@ impl Store {
                                 pc: state.pc,
                                 code_begin: state.code_begin,
                                 code_end: state.code_end,
+                                jumps: state.jumps,
                                 bp: stack_ptr.add(bp),
                                 sp: stack_ptr.add(stack.len()),
                                 locals_end: stack_ptr.add(locals_end),
@@ -544,181 +656,183 @@ impl Store {
                     }
                 }
 
-                wasm::opcode::DROP => {
+                Opcode::Drop => {
                     state.pop();
                 }
 
-                wasm::opcode::SELECT => {
+                Opcode::Select => {
                     let cond = state.pop().as_i32();
                     let (b, a) = (state.pop(), state.pop());
                     state.push(if cond != 0 { a } else { b });
                 }
 
-                wasm::opcode::TYPED_SELECT => unreachable!(),
+                Opcode::TypedSelect => {
+                    todo!()
+                }
 
-                wasm::opcode::LOCAL_GET => {
+                Opcode::LocalGet => {
                     let idx = state.next_u32();
                     let v = unsafe { *state.local(idx) };
                     state.push(v);
                 }
 
-                wasm::opcode::LOCAL_SET => {
+                Opcode::LocalSet => {
                     let idx = state.next_u32();
                     let v = state.pop();
                     unsafe { *state.local(idx) = v };
                 }
 
-                wasm::opcode::LOCAL_TEE => {
+                Opcode::LocalTee => {
                     let idx = state.next_u32();
                     let v = state.top();
                     unsafe { *state.local(idx) = v };
                 }
 
-                wasm::opcode::GLOBAL_GET => {
+                Opcode::GlobalGet => {
                     let idx = state.next_u32();
                     let inst = unsafe { &*self.instances[state.instance].get() };
                     let global = Global::new(&inst.globals.inner()[idx as usize]);
                     state.push(StackValue::from_value(global.get()));
                 }
 
-                wasm::opcode::GLOBAL_SET => {
+                Opcode::GlobalSet => {
                     let idx = state.next_u32();
                     let inst = unsafe { &*self.instances[state.instance].get() };
                     let mut global = Global::new(&inst.globals.inner()[idx as usize]);
                     global.set(state.pop().to_value(global.get().ty()));
                 }
 
-                wasm::opcode::TABLE_GET => {
+                Opcode::TableGet => {
                     vm_err!(Error::Unimplemented);
                 }
 
-                wasm::opcode::TABLE_SET => {
+                Opcode::TableSet => {
                     vm_err!(Error::Unimplemented);
                 }
 
-                wasm::opcode::I32_LOAD => {
+                Opcode::I32Load => {
                     let v = vm_try!(state.load_op());
                     state.push(StackValue::from_i32(i32::from_le_bytes(v)));
                 }
 
-                wasm::opcode::I64_LOAD => {
+                Opcode::I64Load => {
                     let v = vm_try!(state.load_op());
                     state.push(StackValue::from_i64(i64::from_le_bytes(v)));
                 }
 
-                wasm::opcode::F32_LOAD => {
+                Opcode::F32Load => {
                     let v = vm_try!(state.load_op());
                     state.push(StackValue::from_f32(f32::from_le_bytes(v)));
                 }
 
-                wasm::opcode::F64_LOAD => {
+                Opcode::F64Load => {
                     let v = vm_try!(state.load_op());
                     state.push(StackValue::from_f64(f64::from_le_bytes(v)));
                 }
 
-                wasm::opcode::I32_LOAD8_S => {
+                Opcode::I32Load8S => {
                     let v = vm_try!(state.load_op());
                     state.push(StackValue::from_i32(i8::from_le_bytes(v) as i32));
                 }
 
-                wasm::opcode::I32_LOAD8_U => {
+                Opcode::I32Load8U => {
                     let v = vm_try!(state.load_op());
                     state.push(StackValue::from_i32(u8::from_le_bytes(v) as i32));
                 }
 
-                wasm::opcode::I32_LOAD16_S => {
+                Opcode::I32Load16S => {
                     let v = vm_try!(state.load_op());
                     state.push(StackValue::from_i32(i16::from_le_bytes(v) as i32));
                 }
 
-                wasm::opcode::I32_LOAD16_U => {
+                Opcode::I32Load16U => {
                     let v = vm_try!(state.load_op());
                     state.push(StackValue::from_i32(u16::from_le_bytes(v) as i32));
                 }
 
-                wasm::opcode::I64_LOAD8_S => {
+                Opcode::I64Load8S => {
                     let v = vm_try!(state.load_op());
                     state.push(StackValue::from_i64(i8::from_le_bytes(v) as i64));
                 }
 
-                wasm::opcode::I64_LOAD8_U => {
+                Opcode::I64Load8U => {
                     let v = vm_try!(state.load_op());
                     state.push(StackValue::from_i64(u8::from_le_bytes(v) as i64));
                 }
 
-                wasm::opcode::I64_LOAD16_S => {
+                Opcode::I64Load16S => {
                     let v = vm_try!(state.load_op());
                     state.push(StackValue::from_i64(i16::from_le_bytes(v) as i64));
                 }
 
-                wasm::opcode::I64_LOAD16_U => {
+                Opcode::I64Load16U => {
                     let v = vm_try!(state.load_op());
                     state.push(StackValue::from_i64(u16::from_le_bytes(v) as i64));
                 }
 
-                wasm::opcode::I64_LOAD32_S => {
+                Opcode::I64Load32S => {
                     let v = vm_try!(state.load_op());
                     state.push(StackValue::from_i64(i32::from_le_bytes(v) as i64));
                 }
 
-                wasm::opcode::I64_LOAD32_U => {
+                Opcode::I64Load32U => {
                     let v = vm_try!(state.load_op());
                     state.push(StackValue::from_i64(u32::from_le_bytes(v) as i64));
                 }
 
-                wasm::opcode::I32_STORE => {
+                Opcode::I32Store => {
                     let v = state.pop().as_i32();
                     vm_try!(state.store_op(v.to_le_bytes()));
                 }
 
-                wasm::opcode::I64_STORE => {
+                Opcode::I64Store => {
                     let v = state.pop().as_i64();
                     vm_try!(state.store_op(v.to_le_bytes()));
                 }
 
-                wasm::opcode::F32_STORE => {
+                Opcode::F32Store => {
                     let v = state.pop().as_f32();
                     vm_try!(state.store_op(v.to_le_bytes()));
                 }
 
-                wasm::opcode::F64_STORE => {
+                Opcode::F64Store => {
                     let v = state.pop().as_f64();
                     vm_try!(state.store_op(v.to_le_bytes()));
                 }
 
-                wasm::opcode::I32_STORE8 => {
+                Opcode::I32Store8 => {
                     let v = state.pop().as_i32() as u8;
                     vm_try!(state.store_op(v.to_le_bytes()));
                 }
 
-                wasm::opcode::I32_STORE16 => {
+                Opcode::I32Store16 => {
                     let v = state.pop().as_i32() as u16;
                     vm_try!(state.store_op(v.to_le_bytes()));
                 }
 
-                wasm::opcode::I64_STORE8 => {
+                Opcode::I64Store8 => {
                     let v = state.pop().as_i64() as u8;
                     vm_try!(state.store_op(v.to_le_bytes()));
                 }
 
-                wasm::opcode::I64_STORE16 => {
+                Opcode::I64Store16 => {
                     let v = state.pop().as_i64() as u16;
                     vm_try!(state.store_op(v.to_le_bytes()));
                 }
 
-                wasm::opcode::I64_STORE32 => {
+                Opcode::I64Store32 => {
                     let v = state.pop().as_i64() as u32;
                     vm_try!(state.store_op(v.to_le_bytes()));
                 }
 
-                wasm::opcode::MEMORY_SIZE => {
+                Opcode::MemorySize => {
                     let mem = state.next_u32();
                     if mem != 0 { todo!() }
 
                     state.push(StackValue::from_i32((state.memory_size / wasm::PAGE_SIZE) as i32));
                 }
 
-                wasm::opcode::MEMORY_GROW => {
+                Opcode::MemoryGrow => {
                     let mem = state.next_u32();
                     if mem != 0 { todo!() }
 
@@ -732,227 +846,227 @@ impl Store {
                     state.push(StackValue::from_i32(result));
                 }
 
-                wasm::opcode::I32_CONST => {
-                    let v = state.next_u32() as i32;
+                Opcode::I32Const => {
+                    let v = state.next_i32();
                     state.push(StackValue::from_i32(v));
                 }
 
-                wasm::opcode::I64_CONST => {
-                    let v = state.next_u64() as i64;
+                Opcode::I64Const => {
+                    let v = state.next_i64();
                     state.push(StackValue::from_i64(v));
                 }
 
-                wasm::opcode::F32_CONST => {
-                    let v = f32::from_bits(state.next_u32());
+                Opcode::F32Const => {
+                    let v = state.next_f32();
                     state.push(StackValue::from_f32(v));
                 }
 
-                wasm::opcode::F64_CONST => {
-                    let v = f64::from_bits(state.next_u64());
+                Opcode::F64Const => {
+                    let v = state.next_f64();
                     state.push(StackValue::from_f64(v));
                 }
 
-                wasm::opcode::I32_EQZ => {
+                Opcode::I32Eqz => {
                     let v = state.pop().as_i32();
                     state.push(StackValue::from_i32((v == 0) as i32));
                 }
 
-                wasm::opcode::I32_EQ => {
+                Opcode::I32Eq => {
                     let (b, a) = (state.pop().as_i32(), state.pop().as_i32());
                     state.push(StackValue::from_i32((a == b) as i32));
                 }
 
-                wasm::opcode::I32_NE => {
+                Opcode::I32Ne => {
                     let (b, a) = (state.pop().as_i32(), state.pop().as_i32());
                     state.push(StackValue::from_i32((a != b) as i32));
                 }
 
-                wasm::opcode::I32_LT_S => {
+                Opcode::I32LtS => {
                     let (b, a) = (state.pop().as_i32(), state.pop().as_i32());
                     state.push(StackValue::from_i32((a < b) as i32));
                 }
 
-                wasm::opcode::I32_LT_U => {
+                Opcode::I32LtU => {
                     let (b, a) = (state.pop().as_i32() as u32, state.pop().as_i32() as u32);
                     state.push(StackValue::from_i32((a < b) as i32));
                 }
 
-                wasm::opcode::I32_GT_S => {
+                Opcode::I32GtS => {
                     let (b, a) = (state.pop().as_i32(), state.pop().as_i32());
                     state.push(StackValue::from_i32((a > b) as i32));
                 }
 
-                wasm::opcode::I32_GT_U => {
+                Opcode::I32GtU => {
                     let (b, a) = (state.pop().as_i32() as u32, state.pop().as_i32() as u32);
                     state.push(StackValue::from_i32((a > b) as i32));
                 }
 
-                wasm::opcode::I32_LE_S => {
+                Opcode::I32LeS => {
                     let (b, a) = (state.pop().as_i32(), state.pop().as_i32());
                     state.push(StackValue::from_i32((a <= b) as i32));
                 }
 
-                wasm::opcode::I32_LE_U => {
+                Opcode::I32LeU => {
                     let (b, a) = (state.pop().as_i32() as u32, state.pop().as_i32() as u32);
                     state.push(StackValue::from_i32((a <= b) as i32));
                 }
 
-                wasm::opcode::I32_GE_S => {
+                Opcode::I32GeS => {
                     let (b, a) = (state.pop().as_i32(), state.pop().as_i32());
                     state.push(StackValue::from_i32((a >= b) as i32));
                 }
 
-                wasm::opcode::I32_GE_U => {
+                Opcode::I32GeU => {
                     let (b, a) = (state.pop().as_i32() as u32, state.pop().as_i32() as u32);
                     state.push(StackValue::from_i32((a >= b) as i32));
                 }
 
-                wasm::opcode::I64_EQZ => {
+                Opcode::I64Eqz => {
                     let v = state.pop().as_i64();
                     state.push(StackValue::from_i32((v == 0) as i32));
                 }
 
-                wasm::opcode::I64_EQ => {
+                Opcode::I64Eq => {
                     let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
                     state.push(StackValue::from_i32((a == b) as i32));
                 }
 
-                wasm::opcode::I64_NE => {
+                Opcode::I64Ne => {
                     let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
                     state.push(StackValue::from_i32((a != b) as i32));
                 }
 
-                wasm::opcode::I64_LT_S => {
+                Opcode::I64LtS => {
                     let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
                     state.push(StackValue::from_i32((a < b) as i32));
                 }
 
-                wasm::opcode::I64_LT_U => {
+                Opcode::I64LtU => {
                     let (b, a) = (state.pop().as_i64() as u64, state.pop().as_i64() as u64);
                     state.push(StackValue::from_i32((a < b) as i32));
                 }
 
-                wasm::opcode::I64_GT_S => {
+                Opcode::I64GtS => {
                     let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
                     state.push(StackValue::from_i32((a > b) as i32));
                 }
 
-                wasm::opcode::I64_GT_U => {
+                Opcode::I64GtU => {
                     let (b, a) = (state.pop().as_i64() as u64, state.pop().as_i64() as u64);
                     state.push(StackValue::from_i32((a > b) as i32));
                 }
 
-                wasm::opcode::I64_LE_S => {
+                Opcode::I64LeS => {
                     let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
                     state.push(StackValue::from_i32((a <= b) as i32));
                 }
 
-                wasm::opcode::I64_LE_U => {
+                Opcode::I64LeU => {
                     let (b, a) = (state.pop().as_i64() as u64, state.pop().as_i64() as u64);
                     state.push(StackValue::from_i32((a <= b) as i32));
                 }
 
-                wasm::opcode::I64_GE_S => {
+                Opcode::I64GeS => {
                     let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
                     state.push(StackValue::from_i32((a >= b) as i32));
                 }
 
-                wasm::opcode::I64_GE_U => {
+                Opcode::I64GeU => {
                     let (b, a) = (state.pop().as_i64() as u64, state.pop().as_i64() as u64);
                     state.push(StackValue::from_i32((a >= b) as i32));
                 }
 
-                wasm::opcode::F32_EQ => {
+                Opcode::F32Eq => {
                     let (b, a) = (state.pop().as_f32(), state.pop().as_f32());
                     state.push(StackValue::from_i32((a == b) as i32));
                 }
 
-                wasm::opcode::F32_NE => {
+                Opcode::F32Ne => {
                     let (b, a) = (state.pop().as_f32(), state.pop().as_f32());
                     state.push(StackValue::from_i32((a != b) as i32));
                 }
 
-                wasm::opcode::F32_LT => {
+                Opcode::F32Lt => {
                     let (b, a) = (state.pop().as_f32(), state.pop().as_f32());
                     state.push(StackValue::from_i32((a < b) as i32));
                 }
 
-                wasm::opcode::F32_GT => {
+                Opcode::F32Gt => {
                     let (b, a) = (state.pop().as_f32(), state.pop().as_f32());
                     state.push(StackValue::from_i32((a > b) as i32));
                 }
 
-                wasm::opcode::F32_LE => {
+                Opcode::F32Le => {
                     let (b, a) = (state.pop().as_f32(), state.pop().as_f32());
                     state.push(StackValue::from_i32((a <= b) as i32));
                 }
 
-                wasm::opcode::F32_GE => {
+                Opcode::F32Ge => {
                     let (b, a) = (state.pop().as_f32(), state.pop().as_f32());
                     state.push(StackValue::from_i32((a >= b) as i32));
                 }
 
-                wasm::opcode::F64_EQ => {
+                Opcode::F64Eq => {
                     let (b, a) = (state.pop().as_f64(), state.pop().as_f64());
                     state.push(StackValue::from_i32((a == b) as i32));
                 }
 
-                wasm::opcode::F64_NE => {
+                Opcode::F64Ne => {
                     let (b, a) = (state.pop().as_f64(), state.pop().as_f64());
                     state.push(StackValue::from_i32((a != b) as i32));
                 }
 
-                wasm::opcode::F64_LT => {
+                Opcode::F64Lt => {
                     let (b, a) = (state.pop().as_f64(), state.pop().as_f64());
                     state.push(StackValue::from_i32((a < b) as i32));
                 }
 
-                wasm::opcode::F64_GT => {
+                Opcode::F64Gt => {
                     let (b, a) = (state.pop().as_f64(), state.pop().as_f64());
                     state.push(StackValue::from_i32((a > b) as i32));
                 }
 
-                wasm::opcode::F64_LE => {
+                Opcode::F64Le => {
                     let (b, a) = (state.pop().as_f64(), state.pop().as_f64());
                     state.push(StackValue::from_i32((a <= b) as i32));
                 }
 
-                wasm::opcode::F64_GE => {
+                Opcode::F64Ge => {
                     let (b, a) = (state.pop().as_f64(), state.pop().as_f64());
                     state.push(StackValue::from_i32((a >= b) as i32));
                 }
 
-                wasm::opcode::I32_CLZ => {
+                Opcode::I32Clz => {
                     let v = state.pop().as_i32();
                     state.push(StackValue::from_i32(v.leading_zeros() as i32));
                 }
 
-                wasm::opcode::I32_CTZ => {
+                Opcode::I32Ctz => {
                     let v = state.pop().as_i32();
                     state.push(StackValue::from_i32(v.trailing_zeros() as i32));
                 }
 
-                wasm::opcode::I32_POPCNT => {
+                Opcode::I32Popcnt => {
                     let v = state.pop().as_i32();
                     state.push(StackValue::from_i32(v.count_ones() as i32));
                 }
 
-                wasm::opcode::I32_ADD => {
+                Opcode::I32Add => {
                     let (b, a) = (state.pop().as_i32(), state.pop().as_i32());
                     state.push(StackValue::from_i32(a.wrapping_add(b)));
                 }
 
-                wasm::opcode::I32_SUB => {
+                Opcode::I32Sub => {
                     let (b, a) = (state.pop().as_i32(), state.pop().as_i32());
                     state.push(StackValue::from_i32(a.wrapping_sub(b)));
                 }
 
-                wasm::opcode::I32_MUL => {
+                Opcode::I32Mul => {
                     let (b, a) = (state.pop().as_i32(), state.pop().as_i32());
                     state.push(StackValue::from_i32(a.wrapping_mul(b)));
                 }
 
-                wasm::opcode::I32_DIV_S => {
+                Opcode::I32DivS => {
                     let (b, a) = (state.pop().as_i32(), state.pop().as_i32());
                     if b == 0 {
                         vm_err!(Error::TrapDivZero);
@@ -960,7 +1074,7 @@ impl Store {
                     state.push(StackValue::from_i32(a.wrapping_div(b)));
                 }
 
-                wasm::opcode::I32_DIV_U => {
+                Opcode::I32DivU => {
                     let (b, a) = (state.pop().as_i32() as u32, state.pop().as_i32() as u32);
                     if b == 0 {
                         vm_err!(Error::TrapDivZero);
@@ -968,7 +1082,7 @@ impl Store {
                     state.push(StackValue::from_i32(a.wrapping_div(b) as i32));
                 }
 
-                wasm::opcode::I32_REM_S => {
+                Opcode::I32RemS => {
                     let (b, a) = (state.pop().as_i32(), state.pop().as_i32());
                     if b == 0 {
                         vm_err!(Error::TrapDivZero);
@@ -976,7 +1090,7 @@ impl Store {
                     state.push(StackValue::from_i32(a.wrapping_rem(b)));
                 }
 
-                wasm::opcode::I32_REM_U => {
+                Opcode::I32RemU => {
                     let (b, a) = (state.pop().as_i32() as u32, state.pop().as_i32() as u32);
                     if b == 0 {
                         vm_err!(Error::TrapDivZero);
@@ -984,77 +1098,77 @@ impl Store {
                     state.push(StackValue::from_i32(a.wrapping_rem(b) as i32));
                 }
 
-                wasm::opcode::I32_AND => {
+                Opcode::I32And => {
                     let (b, a) = (state.pop().as_i32(), state.pop().as_i32());
                     state.push(StackValue::from_i32(a & b));
                 }
 
-                wasm::opcode::I32_OR => {
+                Opcode::I32Or => {
                     let (b, a) = (state.pop().as_i32(), state.pop().as_i32());
                     state.push(StackValue::from_i32(a | b));
                 }
 
-                wasm::opcode::I32_XOR => {
+                Opcode::I32Xor => {
                     let (b, a) = (state.pop().as_i32(), state.pop().as_i32());
                     state.push(StackValue::from_i32(a ^ b));
                 }
 
-                wasm::opcode::I32_SHL => {
+                Opcode::I32Shl => {
                     let (b, a) = (state.pop().as_i32(), state.pop().as_i32());
                     state.push(StackValue::from_i32(a.wrapping_shl(b as u32)));
                 }
 
-                wasm::opcode::I32_SHR_S => {
+                Opcode::I32ShrS => {
                     let (b, a) = (state.pop().as_i32(), state.pop().as_i32());
                     state.push(StackValue::from_i32(a.wrapping_shr(b as u32)));
                 }
 
-                wasm::opcode::I32_SHR_U => {
+                Opcode::I32ShrU => {
                     let (b, a) = (state.pop().as_i32() as u32, state.pop().as_i32() as u32);
                     state.push(StackValue::from_i32(a.wrapping_shr(b as u32) as i32));
                 }
 
-                wasm::opcode::I32_ROTL => {
+                Opcode::I32Rotl => {
                     let (b, a) = (state.pop().as_i32(), state.pop().as_i32());
                     state.push(StackValue::from_i32(a.rotate_left(b as u32)));
                 }
 
-                wasm::opcode::I32_ROTR => {
+                Opcode::I32Rotr => {
                     let (b, a) = (state.pop().as_i32(), state.pop().as_i32());
                     state.push(StackValue::from_i32(a.rotate_right(b as u32)));
                 }
 
-                wasm::opcode::I64_CLZ => {
+                Opcode::I64Clz => {
                     let v = state.pop().as_i64();
                     state.push(StackValue::from_i64(v.leading_zeros() as i64));
                 }
 
-                wasm::opcode::I64_CTZ => {
+                Opcode::I64Ctz => {
                     let v = state.pop().as_i64();
                     state.push(StackValue::from_i64(v.trailing_zeros() as i64));
                 }
 
-                wasm::opcode::I64_POPCNT => {
+                Opcode::I64Popcnt => {
                     let v = state.pop().as_i64();
                     state.push(StackValue::from_i64(v.count_ones() as i64));
                 }
 
-                wasm::opcode::I64_ADD => {
+                Opcode::I64Add => {
                     let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
                     state.push(StackValue::from_i64(a.wrapping_add(b)));
                 }
 
-                wasm::opcode::I64_SUB => {
+                Opcode::I64Sub => {
                     let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
                     state.push(StackValue::from_i64(a.wrapping_sub(b)));
                 }
 
-                wasm::opcode::I64_MUL => {
+                Opcode::I64Mul => {
                     let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
                     state.push(StackValue::from_i64(a.wrapping_mul(b)));
                 }
 
-                wasm::opcode::I64_DIV_S => {
+                Opcode::I64DivS => {
                     let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
                     if b == 0 {
                         vm_err!(Error::TrapDivZero);
@@ -1062,7 +1176,7 @@ impl Store {
                     state.push(StackValue::from_i64(a.wrapping_div(b)));
                 }
 
-                wasm::opcode::I64_DIV_U => {
+                Opcode::I64DivU => {
                     let (b, a) = (state.pop().as_i64() as u64, state.pop().as_i64() as u64);
                     if b == 0 {
                         vm_err!(Error::TrapDivZero);
@@ -1070,7 +1184,7 @@ impl Store {
                     state.push(StackValue::from_i64(a.wrapping_div(b) as i64));
                 }
 
-                wasm::opcode::I64_REM_S => {
+                Opcode::I64RemS => {
                     let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
                     if b == 0 {
                         vm_err!(Error::TrapDivZero);
@@ -1078,7 +1192,7 @@ impl Store {
                     state.push(StackValue::from_i64(a.wrapping_rem(b)));
                 }
 
-                wasm::opcode::I64_REM_U => {
+                Opcode::I64RemU => {
                     let (b, a) = (state.pop().as_i64() as u64, state.pop().as_i64() as u64);
                     if b == 0 {
                         vm_err!(Error::TrapDivZero);
@@ -1086,395 +1200,385 @@ impl Store {
                     state.push(StackValue::from_i64(a.wrapping_rem(b) as i64));
                 }
 
-                wasm::opcode::I64_AND => {
+                Opcode::I64And => {
                     let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
                     state.push(StackValue::from_i64(a & b));
                 }
 
-                wasm::opcode::I64_OR => {
+                Opcode::I64Or => {
                     let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
                     state.push(StackValue::from_i64(a | b));
                 }
 
-                wasm::opcode::I64_XOR => {
+                Opcode::I64Xor => {
                     let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
                     state.push(StackValue::from_i64(a ^ b));
                 }
 
-                wasm::opcode::I64_SHL => {
+                Opcode::I64Shl => {
                     let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
                     state.push(StackValue::from_i64(a.wrapping_shl(b as u32)));
                 }
 
-                wasm::opcode::I64_SHR_S => {
+                Opcode::I64ShrS => {
                     let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
                     state.push(StackValue::from_i64(a.wrapping_shr(b as u32)));
                 }
 
-                wasm::opcode::I64_SHR_U => {
+                Opcode::I64ShrU => {
                     let (b, a) = (state.pop().as_i64() as u64, state.pop().as_i64() as u64);
                     state.push(StackValue::from_i64(a.wrapping_shr(b as u32) as i64));
                 }
 
-                wasm::opcode::I64_ROTL => {
+                Opcode::I64Rotl => {
                     let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
                     state.push(StackValue::from_i64(a.rotate_left(b as u32)));
                 }
 
-                wasm::opcode::I64_ROTR => {
+                Opcode::I64Rotr => {
                     let (b, a) = (state.pop().as_i64(), state.pop().as_i64());
                     state.push(StackValue::from_i64(a.rotate_right(b as u32)));
                 }
 
-                wasm::opcode::F32_ABS => {
+                Opcode::F32Abs => {
                     let v = state.pop().as_f32();
                     state.push(StackValue::from_f32(v.abs()));
                 }
 
-                wasm::opcode::F32_NEG => {
+                Opcode::F32Neg => {
                     let v = state.pop().as_f32();
                     state.push(StackValue::from_f32(-v));
                 }
 
-                wasm::opcode::F32_CEIL => {
+                Opcode::F32Ceil => {
                     let v = state.pop().as_f32();
                     state.push(StackValue::from_f32(v.ceil()));
                 }
 
-                wasm::opcode::F32_FLOOR => {
+                Opcode::F32Floor => {
                     let v = state.pop().as_f32();
                     state.push(StackValue::from_f32(v.floor()));
                 }
 
-                wasm::opcode::F32_TRUNC => {
+                Opcode::F32Trunc => {
                     let v = state.pop().as_f32();
                     state.push(StackValue::from_f32(v.trunc()));
                 }
 
-                wasm::opcode::F32_NEAREST => {
+                Opcode::F32Nearest => {
                     // @todo: this should be `round_ties_even`.
                     let v = state.pop().as_f32();
                     state.push(StackValue::from_f32(v.round()));
                 }
 
-                wasm::opcode::F32_SQRT => {
+                Opcode::F32Sqrt => {
                     let v = state.pop().as_f32();
                     state.push(StackValue::from_f32(v.sqrt()));
                 }
 
-                wasm::opcode::F32_ADD => {
+                Opcode::F32Add => {
                     let (b, a) = (state.pop().as_f32(), state.pop().as_f32());
                     state.push(StackValue::from_f32(a + b));
                 }
 
-                wasm::opcode::F32_SUB => {
+                Opcode::F32Sub => {
                     let (b, a) = (state.pop().as_f32(), state.pop().as_f32());
                     state.push(StackValue::from_f32(a - b));
                 }
 
-                wasm::opcode::F32_MUL => {
+                Opcode::F32Mul => {
                     let (b, a) = (state.pop().as_f32(), state.pop().as_f32());
                     state.push(StackValue::from_f32(a * b));
                 }
 
-                wasm::opcode::F32_DIV => {
+                Opcode::F32Div => {
                     let (b, a) = (state.pop().as_f32(), state.pop().as_f32());
                     state.push(StackValue::from_f32(a / b));
                 }
 
-                wasm::opcode::F32_MIN => {
+                Opcode::F32Min => {
                     let (b, a) = (state.pop().as_f32(), state.pop().as_f32());
                     state.push(StackValue::from_f32(a.min(b)));
                 }
 
-                wasm::opcode::F32_MAX => {
+                Opcode::F32Max => {
                     let (b, a) = (state.pop().as_f32(), state.pop().as_f32());
                     state.push(StackValue::from_f32(a.max(b)));
                 }
 
-                wasm::opcode::F32_COPYSIGN => {
+                Opcode::F32Copysign => {
                     let (b, a) = (state.pop().as_f32(), state.pop().as_f32());
                     state.push(StackValue::from_f32(a.copysign(b)));
                 }
 
-                wasm::opcode::F64_ABS => {
+                Opcode::F64Abs => {
                     let v = state.pop().as_f64();
                     state.push(StackValue::from_f64(v.abs()));
                 }
 
-                wasm::opcode::F64_NEG => {
+                Opcode::F64Neg => {
                     let v = state.pop().as_f64();
                     state.push(StackValue::from_f64(-v));
                 }
 
-                wasm::opcode::F64_CEIL => {
+                Opcode::F64Ceil => {
                     let v = state.pop().as_f64();
                     state.push(StackValue::from_f64(v.ceil()));
                 }
 
-                wasm::opcode::F64_FLOOR => {
+                Opcode::F64Floor => {
                     let v = state.pop().as_f64();
                     state.push(StackValue::from_f64(v.floor()));
                 }
 
-                wasm::opcode::F64_TRUNC => {
+                Opcode::F64Trunc => {
                     let v = state.pop().as_f64();
                     state.push(StackValue::from_f64(v.trunc()));
                 }
 
-                wasm::opcode::F64_NEAREST => {
+                Opcode::F64Nearest => {
                     // @todo: this should be `round_ties_even`.
                     let v = state.pop().as_f64();
                     state.push(StackValue::from_f64(v.round()));
                 }
 
-                wasm::opcode::F64_SQRT => {
+                Opcode::F64Sqrt => {
                     let v = state.pop().as_f64();
                     state.push(StackValue::from_f64(v.sqrt()));
                 }
 
-                wasm::opcode::F64_ADD => {
+                Opcode::F64Add => {
                     let (b, a) = (state.pop().as_f64(), state.pop().as_f64());
                     state.push(StackValue::from_f64(a + b));
                 }
 
-                wasm::opcode::F64_SUB => {
+                Opcode::F64Sub => {
                     let (b, a) = (state.pop().as_f64(), state.pop().as_f64());
                     state.push(StackValue::from_f64(a - b));
                 }
 
-                wasm::opcode::F64_MUL => {
+                Opcode::F64Mul => {
                     let (b, a) = (state.pop().as_f64(), state.pop().as_f64());
                     state.push(StackValue::from_f64(a * b));
                 }
 
-                wasm::opcode::F64_DIV => {
+                Opcode::F64Div => {
                     let (b, a) = (state.pop().as_f64(), state.pop().as_f64());
                     state.push(StackValue::from_f64(a / b));
                 }
 
-                wasm::opcode::F64_MIN => {
+                Opcode::F64Min => {
                     let (b, a) = (state.pop().as_f64(), state.pop().as_f64());
                     state.push(StackValue::from_f64(a.min(b)));
                 }
 
-                wasm::opcode::F64_MAX => {
+                Opcode::F64Max => {
                     let (b, a) = (state.pop().as_f64(), state.pop().as_f64());
                     state.push(StackValue::from_f64(a.max(b)));
                 }
 
-                wasm::opcode::F64_COPYSIGN => {
+                Opcode::F64Copysign => {
                     let (b, a) = (state.pop().as_f64(), state.pop().as_f64());
                     state.push(StackValue::from_f64(a.copysign(b)));
                 }
 
-                wasm::opcode::I32_WRAP_I64 => {
+                Opcode::I32WrapI64 => {
                     let v = state.pop().as_i64();
                     state.push(StackValue::from_i32(v as i32));
                 }
 
-                wasm::opcode::I32_TRUNC_F32_S => {
+                Opcode::I32TruncF32S => {
                     let v = state.pop().as_f32();
                     state.push(StackValue::from_i32(v as i32));
                 }
 
-                wasm::opcode::I32_TRUNC_F32_U => {
+                Opcode::I32TruncF32U => {
                     let v = state.pop().as_f32() as u32;
                     state.push(StackValue::from_i32(v as i32));
                 }
 
-                wasm::opcode::I32_TRUNC_F64_S => {
+                Opcode::I32TruncF64S => {
                     let v = state.pop().as_f64();
                     state.push(StackValue::from_i32(v as i32));
                 }
 
-                wasm::opcode::I32_TRUNC_F64_U => {
+                Opcode::I32TruncF64U => {
                     let v = state.pop().as_f64() as u32;
                     state.push(StackValue::from_i32(v as i32));
                 }
 
-                wasm::opcode::I64_EXTEND_I32_S => {
+                Opcode::I64ExtendI32S => {
                     let v = state.pop().as_i32();
                     state.push(StackValue::from_i64(v as i64));
                 }
 
-                wasm::opcode::I64_EXTEND_I32_U => {
+                Opcode::I64ExtendI32U => {
                     let v = state.pop().as_i32() as u32;
                     state.push(StackValue::from_i64(v as i64));
                 }
 
-                wasm::opcode::I64_TRUNC_F32_S => {
+                Opcode::I64TruncF32S => {
                     let v = state.pop().as_f32();
                     state.push(StackValue::from_i64(v as i64));
                 }
 
-                wasm::opcode::I64_TRUNC_F32_U => {
+                Opcode::I64TruncF32U => {
                     let v = state.pop().as_f32() as u64;
                     state.push(StackValue::from_i64(v as i64));
                 }
 
-                wasm::opcode::I64_TRUNC_F64_S => {
+                Opcode::I64TruncF64S => {
                     let v = state.pop().as_f64();
                     state.push(StackValue::from_i64(v as i64));
                 }
 
-                wasm::opcode::I64_TRUNC_F64_U => {
+                Opcode::I64TruncF64U => {
                     let v = state.pop().as_f64() as u64;
                     state.push(StackValue::from_i64(v as i64));
                 }
 
-                wasm::opcode::F32_CONVERT_I32_S => {
+                Opcode::F32ConvertI32S => {
                     let v = state.pop().as_i32();
                     state.push(StackValue::from_f32(v as f32));
                 }
 
-                wasm::opcode::F32_CONVERT_I32_U => {
+                Opcode::F32ConvertI32U => {
                     let v = state.pop().as_i32() as u32;
                     state.push(StackValue::from_f32(v as f32));
                 }
 
-                wasm::opcode::F32_CONVERT_I64_S => {
+                Opcode::F32ConvertI64S => {
                     let v = state.pop().as_i64();
                     state.push(StackValue::from_f32(v as f32));
                 }
 
-                wasm::opcode::F32_CONVERT_I64_U => {
+                Opcode::F32ConvertI64U => {
                     let v = state.pop().as_i64() as u64;
                     state.push(StackValue::from_f32(v as f32));
                 }
 
-                wasm::opcode::F32_DEMOTE_F64 => {
+                Opcode::F32DemoteF64 => {
                     let v = state.pop().as_f64();
                     state.push(StackValue::from_f32(v as f32));
                 }
 
-                wasm::opcode::F64_CONVERT_I32_S => {
+                Opcode::F64ConvertI32S => {
                     let v = state.pop().as_i32();
                     state.push(StackValue::from_f64(v as f64));
                 }
 
-                wasm::opcode::F64_CONVERT_I32_U => {
+                Opcode::F64ConvertI32U => {
                     let v = state.pop().as_i32() as u32;
                     state.push(StackValue::from_f64(v as f64));
                 }
 
-                wasm::opcode::F64_CONVERT_I64_S => {
+                Opcode::F64ConvertI64S => {
                     let v = state.pop().as_i64();
                     state.push(StackValue::from_f64(v as f64));
                 }
 
-                wasm::opcode::F64_CONVERT_I64_U => {
+                Opcode::F64ConvertI64U => {
                     let v = state.pop().as_i64() as u64;
                     state.push(StackValue::from_f64(v as f64));
                 }
 
-                wasm::opcode::F64_PROMOTE_F32 => {
+                Opcode::F64PromoteF32 => {
                     let v = state.pop().as_f32();
                     state.push(StackValue::from_f64(v as f64));
                 }
 
-                wasm::opcode::I32_REINTERPRET_F32 => {}
+                Opcode::I32ReinterpretF32 => {}
 
-                wasm::opcode::I64_REINTERPRET_F64 => {}
+                Opcode::I64ReinterpretF64 => {}
 
-                wasm::opcode::F32_REINTERPRET_I32 => {}
+                Opcode::F32ReinterpretI32 => {}
 
-                wasm::opcode::F64_REINTERPRET_I64 => {}
+                Opcode::F64ReinterpretI64 => {}
 
-                wasm::opcode::I32_EXTEND8_S => {
+                Opcode::I32Extend8S => {
                     let v = state.pop().as_i32() as i8;
                     state.push(StackValue::from_i32(v as i32));
                 }
 
-                wasm::opcode::I32_EXTEND16_S => {
+                Opcode::I32Extend16S => {
                     let v = state.pop().as_i32() as i16;
                     state.push(StackValue::from_i32(v as i32));
                 }
 
-                wasm::opcode::I64_EXTEND8_S => {
+                Opcode::I64Extend8S => {
                     let v = state.pop().as_i64() as i8;
                     state.push(StackValue::from_i64(v as i64));
                 }
 
-                wasm::opcode::I64_EXTEND16_S => {
+                Opcode::I64Extend16S => {
                     let v = state.pop().as_i64() as i16;
                     state.push(StackValue::from_i64(v as i64));
                 }
 
-                wasm::opcode::I64_EXTEND32_S => {
+                Opcode::I64Extend32S => {
                     let v = state.pop().as_i64() as i32;
                     state.push(StackValue::from_i64(v as i64));
                 }
 
-                wasm::opcode::REF_NULL => {
+                Opcode::RefNull => {
                     state.push(StackValue::from_i32(u32::MAX as i32));
                 }
 
-                wasm::opcode::REF_IS_NULL => {
+                Opcode::RefIsNull => {
                     let v = state.pop().as_i32() as u32;
                     state.push(StackValue::from_i32((v == u32::MAX) as i32));
                 }
 
-                wasm::opcode::REF_FUNC => {
+                Opcode::RefFunc => {
                     vm_err!(Error::Unimplemented);
                 }
 
-                0xfc => {
-                    let op = state.next_u32();
-                    match op {
-                        wasm::opcode::xfc::MEMORY_COPY => {
-                            let (dst_mem, src_mem) = (state.next_u32(), state.next_u32());
-                            if dst_mem != 0 || src_mem != 0 {
-                                vm_err!(Error::Unimplemented);
-                            }
+                Opcode::MemoryCopy => {
+                    let (dst_mem, src_mem) = (state.next_u32(), state.next_u32());
+                    if dst_mem != 0 || src_mem != 0 {
+                        vm_err!(Error::Unimplemented);
+                    }
 
-                            let n = state.pop().as_i32() as usize;
-                            let src = state.pop().as_i32() as usize;
-                            let dst = state.pop().as_i32() as usize;
+                    let n = state.pop().as_i32() as usize;
+                    let src = state.pop().as_i32() as usize;
+                    let dst = state.pop().as_i32() as usize;
 
-                            let Some(src_end) = src.checked_add(n) else {
-                                vm_err!(Error::TrapMemoryBounds);
-                            };
-                            let Some(dst_end) = dst.checked_add(n) else {
-                                vm_err!(Error::TrapMemoryBounds);
-                            };
-                            if src_end > state.memory_size || dst_end > state.memory_size {
-                                vm_err!(Error::TrapMemoryBounds);
-                            }
+                    let Some(src_end) = src.checked_add(n) else {
+                        vm_err!(Error::TrapMemoryBounds);
+                    };
+                    let Some(dst_end) = dst.checked_add(n) else {
+                        vm_err!(Error::TrapMemoryBounds);
+                    };
+                    if src_end > state.memory_size || dst_end > state.memory_size {
+                        vm_err!(Error::TrapMemoryBounds);
+                    }
 
-                            unsafe {
-                                core::ptr::copy(state.memory.add(src), state.memory.add(dst), n);
-                            }
-                        }
-
-                        wasm::opcode::xfc::MEMORY_FILL => {
-                            let mem = state.next_u32();
-                            if mem != 0 {
-                                vm_err!(Error::Unimplemented);
-                            }
-
-                            let n = state.pop().as_i32() as usize;
-                            let v = state.pop().as_i32() as u8;
-                            let dst = state.pop().as_i32() as usize;
-
-                            let Some(dst_end) = dst.checked_add(n) else {
-                                vm_err!(Error::TrapMemoryBounds);
-                            };
-                            if dst_end > state.memory_size {
-                                vm_err!(Error::TrapMemoryBounds);
-                            }
-
-                            unsafe {
-                                core::ptr::write_bytes(state.memory.add(dst), v, n);
-                            }
-                        }
-
-                        _ => unreachable!()
+                    unsafe {
+                        core::ptr::copy(state.memory.add(src), state.memory.add(dst), n);
                     }
                 }
 
-                _ => unreachable!()
-                */
+                Opcode::MemoryFill => {
+                    let mem = state.next_u32();
+                    if mem != 0 {
+                        vm_err!(Error::Unimplemented);
+                    }
+
+                    let n = state.pop().as_i32() as usize;
+                    let v = state.pop().as_i32() as u8;
+                    let dst = state.pop().as_i32() as usize;
+
+                    let Some(dst_end) = dst.checked_add(n) else {
+                        vm_err!(Error::TrapMemoryBounds);
+                    };
+                    if dst_end > state.memory_size {
+                        vm_err!(Error::TrapMemoryBounds);
+                    }
+
+                    unsafe {
+                        core::ptr::write_bytes(state.memory.add(dst), v, n);
+                    }
+                }
             }
         };
 
@@ -1482,5 +1586,4 @@ impl Store {
         return (Err(e),);
     }
 }
-
 

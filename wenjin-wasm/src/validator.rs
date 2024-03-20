@@ -19,6 +19,7 @@ pub struct Validator<'a> {
 
     locals: Vec<ValueType>,
     stack: Vec<ValueType>,
+    max_stack: u32,
     frames: Vec<Frame>,
 }
 
@@ -33,7 +34,7 @@ struct Frame {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum FrameKind {
     Block { last_use: u32, },
-    If    { this: u32, last_use: u32 },
+    If    { the_if: u32, last_use: u32 },
     Else  { last_use: u32 },
     Loop  { this: u32 },
 }
@@ -55,6 +56,7 @@ impl<'a> Validator<'a> {
             pos: 0,
             locals: Vec::new(),
             stack: Vec::new(),
+            max_stack: 0,
             frames: Vec::new(),
         }
     }
@@ -77,6 +79,11 @@ impl<'a> Validator<'a> {
     #[inline(always)]
     pub fn num_stack(&self) -> u32 {
         self.stack.len() as u32
+    }
+
+    #[inline(always)]
+    pub fn stack_size(&self) -> u32 {
+        self.num_locals() + self.max_stack
     }
 
     #[inline(always)]
@@ -103,6 +110,7 @@ impl<'a> Validator<'a> {
             }
 
             self.stack.push(ty);
+            self.max_stack = self.max_stack.max(self.stack.len() as u32);
         }
         return Ok(());
     }
@@ -269,6 +277,7 @@ impl<'a> Validator<'a> {
         }
 
         self.stack.truncate(0);
+        self.max_stack = 0;
 
         self.frames.truncate(0);
         self.frames.push(Frame {
@@ -360,8 +369,8 @@ impl<'a> Validator<'a> {
                     let ty = parser.parse_block_type()?;
                     self.expect(ValueType::I32)?;
                     self.expect_n(self.block_begin_types(ty))?;
-                    let this = (self.pos - begin_func) as u32;
-                    self.push_frame(FrameKind::If { this, last_use: u32::MAX }, ty)?;
+                    let the_if = (parser.offset() - begin_func) as u32;
+                    self.push_frame(FrameKind::If { the_if, last_use: u32::MAX }, ty)?;
                 }
 
                 OpcodeClass::Else => {
@@ -370,16 +379,22 @@ impl<'a> Validator<'a> {
                     }
 
                     let frame = self.pop_frame()?;
-                    let FrameKind::If { this: the_if, last_use } = frame.kind else {
+                    let FrameKind::If { the_if, last_use } = frame.kind else {
                         return Err(self.error(ErrorKind::UnexpectedElse));
                     };
 
-                    let this = (self.pos - begin_func) as u32;
                     if let Some(jumps) = jumps.as_mut() {
-                        jumps.insert(the_if, Jump { target: this, shift_num: 0, shift_by: 0 });
+                        //let target = (self.pos - begin_func) as u32;
+                        let target = (parser.offset() - begin_func) as u32;
+                        jumps.insert(the_if, Jump { target, shift_num: 0, shift_by: 0 });
                     }
 
                     self.push_frame(FrameKind::Else { last_use }, frame.ty)?;
+
+                    if let Some(jumps) = jumps.as_mut() {
+                        let this = (parser.offset() - begin_func) as u32;
+                        jump(self, this, 0, 0, jumps);
+                    }
                 }
 
                 OpcodeClass::End => {
@@ -394,7 +409,7 @@ impl<'a> Validator<'a> {
                             }
                         }
 
-                        FrameKind::If { this: the_if, last_use } => {
+                        FrameKind::If { the_if, last_use } => {
                             let begin_types = self.block_begin_types(frame.ty);
                             let end_types = self.block_end_types(frame.ty);
                             if end_types != begin_types {
@@ -425,7 +440,7 @@ impl<'a> Validator<'a> {
                     self.expect_n(tys)?;
 
                     if let Some(jumps) = &mut jumps {
-                        let this = (self.pos - begin_func) as u32;
+                        let this = (parser.offset() - begin_func) as u32;
                         jump(self, this, label, tys.len(), jumps);
                     }
 
@@ -441,7 +456,7 @@ impl<'a> Validator<'a> {
                     self.expect_n(tys)?;
 
                     if let Some(jumps) = &mut jumps {
-                        let this = (self.pos - begin_func) as u32;
+                        let this = (parser.offset() - begin_func) as u32;
                         jump(self, this, label, tys.len(), jumps);
                     }
 
@@ -449,6 +464,8 @@ impl<'a> Validator<'a> {
                 }
 
                 OpcodeClass::BrTable => {
+                    let mut this = (parser.offset() - begin_func) as u32;
+
                     let table = parser.parse_br_table()?;
                     let frame = self.label(table.default)?;
 
@@ -456,7 +473,6 @@ impl<'a> Validator<'a> {
                     self.expect(ValueType::I32)?;
                     self.expect_n(tys)?;
 
-                    let mut this = (self.pos - begin_func) as u32;
                     if let Some(jumps) = &mut jumps {
                         jump(self, this, table.default, tys.len(), jumps);
                     }

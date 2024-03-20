@@ -20,14 +20,15 @@
       opcode, for setting breakpoints.
 
 - rw#2:
-    - wasm interp.
-        - optionally generate pc -> type top & pc -> br hash-maps.
-        - move run into `interp[+.rs]`
     - pass tests again.
+        - fix if/else.
+            - then jump should be first, but that breaks more tests??
+            - shifting.
     - unreachable -> `False`.
     - immutable type stack.
 
 - todo:
+    - handle too long u32 (from u64 isn't enough for 0-padded values).
     - unified stack.
         - 4 bit sp offset from frame.
         - account for `StackFrame` in bounds check.

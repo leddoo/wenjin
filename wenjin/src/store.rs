@@ -8,6 +8,7 @@ use sti::boks::Box;
 use sti::rc::Rc;
 use sti::vec::Vec;
 use sti::keyed::KVec;
+use sti::hash::HashMap;
 
 use crate::{Error, Value};
 use crate::table::{TableData, Table};
@@ -106,20 +107,22 @@ pub(crate) enum FuncKind {
 
 pub(crate) struct InterpFunc {
     pub instance: InstanceId,
-    pub code: Box<UnsafeCell<[u8]>>,
+    pub code: *const u8,
+    pub code_len: usize,
+    pub jumps: HashMap<u32, wasm::Jump>,
     pub num_params: u32,
-    pub num_locals: u32,
+    pub num_locals: u32, // including params.
     pub stack_size: u32, // including locals.
 }
 
 impl InterpFunc {
     #[inline]
-    pub fn code_begin(&self) -> *mut u8 {
-        self.code.inner().as_ptr() as *mut u8
+    pub fn code_begin(&self) -> *const u8 {
+        self.code
     }
     #[inline]
     pub fn code_end(&self) -> *const u8 {
-        unsafe { self.code_begin().add((&*self.code.get()).len()) }
+        unsafe { self.code.add(self.code_len) }
     }
 }
 
@@ -323,31 +326,28 @@ impl Store {
         }
 
 
-        /* @rework
-        let mut compiler = interp::Compiler::new(&module);
+        let mut validator = wasm::Validator::new(&module);
         for (i, code) in module.codes.iter().enumerate() {
             let mut p = wasm::Parser::from_sub_section(&*wasm, code.expr);
 
             let ty_idx = module.funcs[i];
             let ty = module.types[module.funcs[i] as usize];
 
+
             if 0==1 { println!("{i}") };
-            compiler.begin_func(ty_idx, code.locals)
-                .map_err(|e| Error::Validation(p.reader.offset(), e))?;
+            let mut jumps = HashMap::new();
+            validator.validate_func(&mut p, ty_idx, code.locals, Some(&mut jumps))
+                .map_err(|e| Error::Wasm(e))?;
 
-            while !p.is_done() {
-                if 0==1 { println!("{:?}", p.clone().parse_operator()) }
-
-                let offset = p.reader.offset();
-                compiler.begin_operator(offset as u32); // @todo: do/should we ensure wasm size is u32?
-                p.parse_operator_with(&mut compiler)
-                    .map_err(|e| Error::Parse(e))?
-                    .map_err(|e| Error::Validation(offset, e))?;
-                compiler.end_operator();
-            }
-
-            let interp_func = compiler.end_func(instance_id)
-                .map_err(|e| Error::Validation(p.reader.offset(), e))?;
+            let interp_func = InterpFunc {
+                instance: instance_id,
+                code: unsafe { wasm.as_ptr().add(code.expr.offset) },
+                code_len: code.expr.len,
+                num_params: ty.params.len() as u32,
+                num_locals: validator.num_locals(),
+                stack_size: validator.stack_size(),
+                jumps,
+            };
 
             let id = self.funcs.next_key();
             let func = Rc::new(UnsafeCell::new(
@@ -355,7 +355,6 @@ impl Store {
             funcs.push(func.clone());
             self.funcs.push(func);
         }
-        */
         debug_assert_eq!(funcs.len(), num_funcs);
 
         for tab in module.tables {

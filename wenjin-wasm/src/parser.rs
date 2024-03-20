@@ -33,6 +33,11 @@ impl<'a> Parser<'a> {
         Self { reader: Reader::new(wasm) }
     }
 
+    #[inline(always)]
+    pub fn offset(&self) -> usize {
+        self.reader.offset()
+    }
+
     #[inline]
     pub fn is_done(&self) -> bool {
         self.reader.is_empty()

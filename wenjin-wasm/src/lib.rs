@@ -1,12 +1,12 @@
 pub mod leb128;
 
 pub mod opcode;
-//mod operator;
 mod parser;
 mod validator;
 
+pub use opcode::Opcode;
 pub use parser::Parser;
-pub use validator::Validator;
+pub use validator::{Validator, Jump};
 
 
 pub const PAGE_SIZE: usize = 64*1024;
