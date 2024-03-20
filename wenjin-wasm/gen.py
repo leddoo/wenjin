@@ -85,6 +85,7 @@ def opcode_class():
     print("#[derive(Clone, Copy, Debug)]")
     print("pub enum OpcodeClass {")
     print("    Basic { pop: &'static [ValueType], push: &'static [ValueType] },")
+    print("    Mem { max_align: u8, pop: &'static [ValueType], push: &'static [ValueType] },")
     for opcode in opcodes:
         name = opcode[COL_NAME]
         imm = opcode[COL_IMM]
@@ -93,7 +94,7 @@ def opcode_class():
         flags = opcode[COL_FLAGS]
 
         special = "c" in flags
-        assert not len(imm) > 0 or special
+        assert not len(imm) > 0 or special or "m" in flags
         assert not "!" in flags or special
         assert not special or len(args) == 0
         assert not special or len(rets) == 0
@@ -115,7 +116,19 @@ def opcode_class():
         else:
             pop  = ",".join(map(lambda ty: f"ValueType::{ty.capitalize()}", args))
             push = ",".join(map(lambda ty: f"ValueType::{ty.capitalize()}", rets))
-            print(f"    OpcodeClass::Basic {{ pop: &[{pop}], push: &[{push}] }},")
+            if "m" in flags:
+                assert "." not in name
+                ty = name.split("_")[0] # todo: "."
+                max_align = None
+                if "32" in ty:
+                    max_align = 4
+                elif "64" in ty:
+                    max_align = 8
+                else:
+                    assert False
+                print(f"    OpcodeClass::Mem {{ max_align: {max_align}, pop: &[{pop}], push: &[{push}] }},")
+            else:
+                print(f"    OpcodeClass::Basic {{ pop: &[{pop}], push: &[{push}] }},")
     print("];")
 
 

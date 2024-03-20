@@ -171,6 +171,28 @@ impl<'a> Parser<'a> {
 
     #[inline] pub fn parse_global_idx(&mut self) -> Result<GlobalIdx> { self.parse_u32() }
 
+    pub fn parse_br_table(&mut self) -> Result<BrTable> {
+        let num_labels = self.parse_u32()?;
+
+        let begin_labels = self.reader.offset();
+        for _ in 0..num_labels {
+            self.parse_u32()?;
+        }
+        let end_labels = self.reader.offset();
+        let labels = &self.reader.original_slice()[begin_labels..end_labels];
+
+        let default = self.parse_u32()?;
+
+        return Ok(BrTable { num_labels, labels, default });
+    }
+
+    pub fn parse_typed_select(&mut self) -> Result<ValueType> {
+        // length of types vector.
+        self.reader.expect(0x01)
+            .map_err(|_| self.error(ErrorKind::UnsupportedOperator))?;
+        return Ok(self.parse_value_type()?);
+    }
+
     pub fn parse_limits(&mut self) -> Result<Limits> {
         return Ok(match self.next()? {
             0x00 => Limits { min: self.parse_u32()?, max: None },
@@ -371,25 +393,22 @@ impl<'a> Parser<'a> {
 
 
     pub fn parse_const_expr(&mut self) -> Result<ConstExpr> {
-        todo!()
-        /*
-        let result = match self.parse_operator()? {
-            Operator::I32Const { value } => ConstExpr::I32(value),
-            Operator::I64Const { value } => ConstExpr::I64(value),
-            Operator::F32Const { value } => ConstExpr::F32(value),
-            Operator::F64Const { value } => ConstExpr::F64(value),
-            Operator::GlobalGet { idx } => ConstExpr::Global(idx),
-            Operator::RefNull { ty } => ConstExpr::RefNull(ty),
+        let result = match self.parse_opcode()? {
+            Opcode::I32Const => ConstExpr::I32(self.parse_i32()?),
+            Opcode::I64Const => ConstExpr::I64(self.parse_i64()?),
+            Opcode::F32Const => ConstExpr::F32(self.parse_f32()?),
+            Opcode::F64Const => ConstExpr::F64(self.parse_f64()?),
+            Opcode::GlobalGet => ConstExpr::Global(self.parse_global_idx()?),
+            Opcode::RefNull  => ConstExpr::RefNull(self.parse_ref_type()?),
 
             _ => return Err(self.error(ErrorKind::InvalidConstExpr))
         };
 
-        let Operator::End = self.parse_operator()? else {
+        let Opcode::End = self.parse_opcode()? else {
             return Err(self.error(ErrorKind::InvalidConstExpr));
         };
 
         return Ok(result);
-        */
     }
 
     pub fn parse_opcode(&mut self) -> Result<Opcode> {

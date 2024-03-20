@@ -2,7 +2,7 @@ use sti::traits::CopyIt;
 use sti::vec::Vec;
 
 use crate::{Result, Error, ErrorKind};
-use crate::{ValueType, BlockType, TypeIdx, FuncIdx, TableIdx, MemoryIdx, GlobalIdx, Module, TableType, FuncType, RefType, GlobalType, MemoryType, BrTable};
+use crate::{ValueType, BlockType, TypeIdx, FuncIdx, TableIdx, MemoryIdx, GlobalIdx, Module, TableType, FuncType, RefType, GlobalType, MemoryType};
 
 
 pub const DEFAULT_STACK_LIMIT: u32 = 1024;
@@ -76,40 +76,6 @@ impl<'a> Validator<'a> {
         self.frames.len() as u32
     }
 
-
-    /*
-    pub fn begin_func(&mut self, ty: TypeIdx, locals: &[ValueType]) -> Result<(), ValidatorError> {
-        self.locals.truncate(0);
-        let params = self.ty(ty)?.params;
-        self.locals.reserve(params.len() + locals.len());
-        for param in params.copy_it() {
-            self.locals.push(param);
-        }
-        for local in locals.copy_it() {
-            self.locals.push(local);
-        }
-
-        self.stack.truncate(0);
-
-        self.frames.truncate(0);
-        self.frames.push(ControlFrame {
-            kind: ControlFrameKind::Block,
-            ty: BlockType::Func(ty),
-            height: 0,
-            unreachable: false,
-        });
-
-        return Ok(());
-    }
-
-    pub fn end_func(&mut self) -> Result<(), ValidatorError> {
-        if self.frames.len() != 0 {
-            return Err(ValidatorError::MissingEnd);
-        }
-        assert_eq!(self.stack.len(), 0);
-        return Ok(());
-    }
-    */
 
     pub fn is_unreachable(&self) -> bool {
         self.frames.rev(0).unreachable
@@ -239,83 +205,14 @@ impl<'a> Validator<'a> {
             .ok_or_else(|| self.error(ErrorKind::InvalidTableIdx))
     }
 
-    fn memory(&self, idx: TableIdx) -> Result<MemoryType> {
+    fn memory(&self, idx: MemoryIdx) -> Result<MemoryType> {
         self.module.get_memory(idx)
             .ok_or_else(|| self.error(ErrorKind::InvalidMemoryIdx))
     }
 
-    fn global(&self, idx: u32) -> Result<GlobalType> {
+    fn global(&self, idx: GlobalIdx) -> Result<GlobalType> {
         self.module.get_global(idx)
             .ok_or_else(|| self.error(ErrorKind::InvalidGlobalIdx))
-    }
-
-
-    #[inline]
-    fn check_load_store(&self, ty: ValueType, align: u32, max_align: u32) -> Result<()> {
-        self.memory(0)?;
-
-        match ty {
-            ValueType::I32 | ValueType::I64 |
-            ValueType::F32 | ValueType::F64 |
-            ValueType::V128 => (),
-
-            ValueType::FuncRef |
-            ValueType::ExternRef => return Err(self.error(ErrorKind::LoadStoreRefType))
-        };
-
-        let align = 1u32.checked_shl(align)
-            .ok_or_else(|| self.error(ErrorKind::AlignTooLarge))?;
-        if align > max_align {
-            return Err(self.error(ErrorKind::AlignTooLarge));
-        }
-
-        return Ok(());
-    }
-
-    #[inline]
-    fn load(&mut self, ty: ValueType, align: u32, _offset: u32, max_align: u32) -> Result<()> {
-        self.check_load_store(ty, align, max_align)?;
-        self.expect(ValueType::I32)?;
-        self.push(ty)
-    }
-
-    #[inline]
-    fn store(&mut self, ty: ValueType, align: u32, _offset: u32, max_align: u32) -> Result<()> {
-        self.check_load_store(ty, align, max_align)?;
-        self.expect(ty)?;
-        self.expect(ValueType::I32)
-    }
-
-    #[inline]
-    fn test_op(&mut self, ty: ValueType) -> Result<()> {
-        self.expect(ty)?;
-        self.push(ValueType::I32)
-    }
-
-    #[inline]
-    fn rel_op(&mut self, ty: ValueType) -> Result<()> {
-        self.expect(ty)?;
-        self.expect(ty)?;
-        self.push(ValueType::I32)
-    }
-
-    #[inline]
-    fn un_op(&mut self, ty: ValueType) -> Result<()> {
-        self.expect(ty)?;
-        self.push(ty)
-    }
-
-    #[inline]
-    fn bin_op(&mut self, ty: ValueType) -> Result<()> {
-        self.expect(ty)?;
-        self.expect(ty)?;
-        self.push(ty)
-    }
-
-    #[inline]
-    fn cvt_op(&mut self, dst_ty: ValueType, src_ty: ValueType) -> Result<()> {
-        self.expect(src_ty)?;
-        self.push(dst_ty)
     }
 
 
@@ -343,15 +240,50 @@ impl<'a> Validator<'a> {
     }
 
 
-    pub fn validate_func(&mut self, parser: &mut crate::Parser) -> Result<()> {
-        while !parser.reader.is_empty() {
+    pub fn validate_func(&mut self, parser: &mut crate::Parser, func_ty: TypeIdx, locals: &[ValueType]) -> Result<()> {
+        self.locals.truncate(0);
+        let params = self.ty(func_ty)?.params;
+        self.locals.reserve(params.len() + locals.len());
+        for param in params.copy_it() {
+            self.locals.push(param);
+        }
+        for local in locals.copy_it() {
+            self.locals.push(local);
+        }
+
+        self.stack.truncate(0);
+
+        self.frames.truncate(0);
+        self.frames.push(ControlFrame {
+            kind: ControlFrameKind::Block,
+            ty: BlockType::Func(func_ty),
+            height: 0,
+            unreachable: false,
+        });
+
+        while !parser.is_done() {
             self.pos = parser.reader.offset();
             let opcode = parser.parse_opcode()?;
 
             use crate::opcode::OpcodeClass;
             match opcode.class() {
                 OpcodeClass::Basic { pop, push } => {
-                    // @todo: mem (if not already checked & opcode requires mem0)
+                    self.expect_n(pop)?;
+                    self.push_n(push)?;
+                }
+
+                OpcodeClass::Mem { max_align, pop, push } => {
+                    let align = parser.parse_u32()?;
+                    let _offset = parser.parse_u32()?;
+
+                    self.memory(0)?;
+
+                    let align = 1u32.checked_shl(align)
+                        .ok_or_else(|| self.error(ErrorKind::AlignTooLarge))?;
+                    if align > max_align as u32 {
+                        return Err(self.error(ErrorKind::AlignTooLarge));
+                    }
+
                     self.expect_n(pop)?;
                     self.push_n(push)?;
                 }
@@ -402,7 +334,9 @@ impl<'a> Validator<'a> {
                     if self.frames.len() > 0 {
                         self.push_n(self.block_end_types(frame.ty))?;
                     }
-                    todo!("else, ensure we're done.")
+                    else {
+                        break;
+                    }
                 }
 
                 OpcodeClass::Br => {
@@ -623,8 +557,18 @@ impl<'a> Validator<'a> {
                 }
             }
         }
+        self.pos = parser.reader.offset();
 
-        todo!()
+        if !parser.is_done() {
+            todo!()
+        }
+
+        if self.frames.len() != 0 {
+            return Err(self.error(ErrorKind::MissingEnd));
+        }
+        assert_eq!(self.stack.len(), 0);
+
+        return Ok(());
     }
 
     #[inline]

@@ -11,18 +11,7 @@ fn parse_and_validate<'a>(wasm: &'a [u8], alloc: &'a Arena) -> Module<'a> {
         let mut p = Parser::from_sub_section(wasm, code.expr);
 
         //println!("func {}", i + module.imports.funcs.len());
-
-        /*
-        validator.begin_func(module.funcs[i], code.locals).unwrap();
-
-        while !p.is_done() {
-            //let (op, valid) = p.parse_operator_with((MkOperator, &mut validator)).unwrap();
-            //valid.unwrap();
-            p.parse_operator_with(&mut validator).unwrap().unwrap();
-        }
-
-        validator.end_func().unwrap();
-        */
+        validator.validate_func(&mut p, module.funcs[i], code.locals).unwrap();
     }
 
     return module;

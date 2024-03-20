@@ -20,15 +20,12 @@
       opcode, for setting breakpoints.
 
 - rw#2:
-    - table driven validator.
-        - br table.
-        - typed select.
-        - see if it still works. diff against old version.
-        - unreachable -> `False`.
-    - immutable type stack.
-    - optionally generate pc -> type top & pc -> br hash-maps.
     - wasm interp.
+        - optionally generate pc -> type top & pc -> br hash-maps.
         - move run into `interp[+.rs]`
+    - pass tests again.
+    - unreachable -> `False`.
+    - immutable type stack.
 
 - todo:
     - unified stack.
