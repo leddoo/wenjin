@@ -8,6 +8,7 @@ use crate::{Import, ImportKind, Imports, Global, Export, ExportKind, Element, El
 use crate::{SubSection, Section, SectionKind, CustomSection};
 use crate::ConstExpr;
 use crate::{ModuleLimits, Module};
+use crate::opcode::{self, Opcode};
 use crate::operator::{Operator, OperatorVisitor, MkOperator};
 
 
@@ -421,11 +422,26 @@ impl<'a> Parser<'a> {
         return Ok(result);
     }
 
+    pub fn parse_opcode(&mut self) -> Result<Opcode> {
+        let at = self.next()?;
+        match Opcode::parse(at) {
+            opcode::ParseResult::Opcode(op) => Ok(op),
+
+            opcode::ParseResult::Prefix(p) =>
+                Opcode::parse_prefixed(p, self.parse_u32()?)
+                    .ok_or_else(|| self.error(ParseErrorKind::UnsupportedOperator)),
+
+            opcode::ParseResult::Error => Err(self.error(ParseErrorKind::UnsupportedOperator)),
+        }
+    }
+
     pub fn parse_operator(&mut self) -> Result<Operator> {
         self.parse_operator_with(MkOperator)
     }
 
     pub fn parse_operator_with<V: OperatorVisitor<'a>>(&mut self, mut v: V) -> Result<V::Output> {
+        todo!()
+    /*
         use crate::opcode;
 
         let at = self.next()?;
@@ -644,6 +660,7 @@ impl<'a> Parser<'a> {
 
             _ => return Err(self.error(ParseErrorKind::UnsupportedOperator))
         })
+    */
     }
 
 

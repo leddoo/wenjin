@@ -21,10 +21,10 @@
 
 - rw#2:
     - table driven validator.
+        - wasm::Error.
         - generate opcode class table.
-        - generate push/pop tables.
+            - with push/pop for basic.
         - class dependent validation.
-        - generate unreachable table.
     - immutable type stack.
     - optionally generate pc -> type top & pc -> br hash-maps.
     - wasm interp.

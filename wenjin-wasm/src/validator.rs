@@ -369,6 +369,16 @@ impl<'a> Validator<'a> {
             self.block_end_types(frame.ty)
         }
     }
+
+
+    pub fn validate_func(&mut self, parser: &mut crate::Parser) -> Result<(), ValidatorError> {
+
+        while !parser.reader.is_empty() {
+            let opcode = parser.parse_opcode().map_err(|_| todo!())?;
+        }
+
+        todo!()
+    }
 }
 
 impl<'a> OperatorVisitor<'a> for Validator<'a> {

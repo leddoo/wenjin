@@ -1,393 +1,492 @@
-pub const UNREACHABLE:              u8 = 0x00;
-pub const NOP:                      u8 = 0x01;
-pub const BLOCK:                    u8 = 0x02;
-pub const LOOP:                     u8 = 0x03;
-pub const IF:                       u8 = 0x04;
-pub const ELSE:                     u8 = 0x05;
-pub const END:                      u8 = 0x0b;
-pub const BR:                       u8 = 0x0c;
-pub const BR_IF:                    u8 = 0x0d;
-pub const BR_TABLE:                 u8 = 0x0e;
-pub const RETURN:                   u8 = 0x0f;
-pub const CALL:                     u8 = 0x10;
-pub const CALL_INDIRECT:            u8 = 0x11;
-pub const DROP:                     u8 = 0x1a;
-pub const SELECT:                   u8 = 0x1b;
-pub const TYPED_SELECT:             u8 = 0x1c;
-pub const LOCAL_GET:                u8 = 0x20;
-pub const LOCAL_SET:                u8 = 0x21;
-pub const LOCAL_TEE:                u8 = 0x22;
-pub const GLOBAL_GET:               u8 = 0x23;
-pub const GLOBAL_SET:               u8 = 0x24;
-pub const TABLE_GET:                u8 = 0x25;
-pub const TABLE_SET:                u8 = 0x26;
-pub const I32_LOAD:                 u8 = 0x28;
-pub const I64_LOAD:                 u8 = 0x29;
-pub const F32_LOAD:                 u8 = 0x2A;
-pub const F64_LOAD:                 u8 = 0x2B;
-pub const I32_LOAD8_S:              u8 = 0x2C;
-pub const I32_LOAD8_U:              u8 = 0x2D;
-pub const I32_LOAD16_S:             u8 = 0x2E;
-pub const I32_LOAD16_U:             u8 = 0x2F;
-pub const I64_LOAD8_S:              u8 = 0x30;
-pub const I64_LOAD8_U:              u8 = 0x31;
-pub const I64_LOAD16_S:             u8 = 0x32;
-pub const I64_LOAD16_U:             u8 = 0x33;
-pub const I64_LOAD32_S:             u8 = 0x34;
-pub const I64_LOAD32_U:             u8 = 0x35;
-pub const I32_STORE:                u8 = 0x36;
-pub const I64_STORE:                u8 = 0x37;
-pub const F32_STORE:                u8 = 0x38;
-pub const F64_STORE:                u8 = 0x39;
-pub const I32_STORE8:               u8 = 0x3A;
-pub const I32_STORE16:              u8 = 0x3B;
-pub const I64_STORE8:               u8 = 0x3C;
-pub const I64_STORE16:              u8 = 0x3D;
-pub const I64_STORE32:              u8 = 0x3E;
-pub const MEMORY_SIZE:              u8 = 0x3F;
-pub const MEMORY_GROW:              u8 = 0x40;
-pub const I32_CONST:                u8 = 0x41;
-pub const I64_CONST:                u8 = 0x42;
-pub const F32_CONST:                u8 = 0x43;
-pub const F64_CONST:                u8 = 0x44;
-pub const I32_EQZ:                  u8 = 0x45;
-pub const I32_EQ:                   u8 = 0x46;
-pub const I32_NE:                   u8 = 0x47;
-pub const I32_LT_S:                 u8 = 0x48;
-pub const I32_LT_U:                 u8 = 0x49;
-pub const I32_GT_S:                 u8 = 0x4A;
-pub const I32_GT_U:                 u8 = 0x4B;
-pub const I32_LE_S:                 u8 = 0x4C;
-pub const I32_LE_U:                 u8 = 0x4D;
-pub const I32_GE_S:                 u8 = 0x4E;
-pub const I32_GE_U:                 u8 = 0x4F;
-pub const I64_EQZ:                  u8 = 0x50;
-pub const I64_EQ:                   u8 = 0x51;
-pub const I64_NE:                   u8 = 0x52;
-pub const I64_LT_S:                 u8 = 0x53;
-pub const I64_LT_U:                 u8 = 0x54;
-pub const I64_GT_S:                 u8 = 0x55;
-pub const I64_GT_U:                 u8 = 0x56;
-pub const I64_LE_S:                 u8 = 0x57;
-pub const I64_LE_U:                 u8 = 0x58;
-pub const I64_GE_S:                 u8 = 0x59;
-pub const I64_GE_U:                 u8 = 0x5A;
-pub const F32_EQ:                   u8 = 0x5B;
-pub const F32_NE:                   u8 = 0x5C;
-pub const F32_LT:                   u8 = 0x5D;
-pub const F32_GT:                   u8 = 0x5E;
-pub const F32_LE:                   u8 = 0x5F;
-pub const F32_GE:                   u8 = 0x60;
-pub const F64_EQ:                   u8 = 0x61;
-pub const F64_NE:                   u8 = 0x62;
-pub const F64_LT:                   u8 = 0x63;
-pub const F64_GT:                   u8 = 0x64;
-pub const F64_LE:                   u8 = 0x65;
-pub const F64_GE:                   u8 = 0x66;
-pub const I32_CLZ:                  u8 = 0x67;
-pub const I32_CTZ:                  u8 = 0x68;
-pub const I32_POPCNT:               u8 = 0x69;
-pub const I32_ADD:                  u8 = 0x6A;
-pub const I32_SUB:                  u8 = 0x6B;
-pub const I32_MUL:                  u8 = 0x6C;
-pub const I32_DIV_S:                u8 = 0x6D;
-pub const I32_DIV_U:                u8 = 0x6E;
-pub const I32_REM_S:                u8 = 0x6F;
-pub const I32_REM_U:                u8 = 0x70;
-pub const I32_AND:                  u8 = 0x71;
-pub const I32_OR:                   u8 = 0x72;
-pub const I32_XOR:                  u8 = 0x73;
-pub const I32_SHL:                  u8 = 0x74;
-pub const I32_SHR_S:                u8 = 0x75;
-pub const I32_SHR_U:                u8 = 0x76;
-pub const I32_ROTL:                 u8 = 0x77;
-pub const I32_ROTR:                 u8 = 0x78;
-pub const I64_CLZ:                  u8 = 0x79;
-pub const I64_CTZ:                  u8 = 0x7A;
-pub const I64_POPCNT:               u8 = 0x7B;
-pub const I64_ADD:                  u8 = 0x7C;
-pub const I64_SUB:                  u8 = 0x7D;
-pub const I64_MUL:                  u8 = 0x7E;
-pub const I64_DIV_S:                u8 = 0x7F;
-pub const I64_DIV_U:                u8 = 0x80;
-pub const I64_REM_S:                u8 = 0x81;
-pub const I64_REM_U:                u8 = 0x82;
-pub const I64_AND:                  u8 = 0x83;
-pub const I64_OR:                   u8 = 0x84;
-pub const I64_XOR:                  u8 = 0x85;
-pub const I64_SHL:                  u8 = 0x86;
-pub const I64_SHR_S:                u8 = 0x87;
-pub const I64_SHR_U:                u8 = 0x88;
-pub const I64_ROTL:                 u8 = 0x89;
-pub const I64_ROTR:                 u8 = 0x8A;
-pub const F32_ABS:                  u8 = 0x8B;
-pub const F32_NEG:                  u8 = 0x8C;
-pub const F32_CEIL:                 u8 = 0x8D;
-pub const F32_FLOOR:                u8 = 0x8E;
-pub const F32_TRUNC:                u8 = 0x8F;
-pub const F32_NEAREST:              u8 = 0x90;
-pub const F32_SQRT:                 u8 = 0x91;
-pub const F32_ADD:                  u8 = 0x92;
-pub const F32_SUB:                  u8 = 0x93;
-pub const F32_MUL:                  u8 = 0x94;
-pub const F32_DIV:                  u8 = 0x95;
-pub const F32_MIN:                  u8 = 0x96;
-pub const F32_MAX:                  u8 = 0x97;
-pub const F32_COPYSIGN:             u8 = 0x98;
-pub const F64_ABS:                  u8 = 0x99;
-pub const F64_NEG:                  u8 = 0x9A;
-pub const F64_CEIL:                 u8 = 0x9B;
-pub const F64_FLOOR:                u8 = 0x9C;
-pub const F64_TRUNC:                u8 = 0x9D;
-pub const F64_NEAREST:              u8 = 0x9E;
-pub const F64_SQRT:                 u8 = 0x9F;
-pub const F64_ADD:                  u8 = 0xA0;
-pub const F64_SUB:                  u8 = 0xA1;
-pub const F64_MUL:                  u8 = 0xA2;
-pub const F64_DIV:                  u8 = 0xA3;
-pub const F64_MIN:                  u8 = 0xA4;
-pub const F64_MAX:                  u8 = 0xA5;
-pub const F64_COPYSIGN:             u8 = 0xA6;
-pub const I32_WRAP_I64:             u8 = 0xA7;
-pub const I32_TRUNC_F32_S:          u8 = 0xA8;
-pub const I32_TRUNC_F32_U:          u8 = 0xA9;
-pub const I32_TRUNC_F64_S:          u8 = 0xAA;
-pub const I32_TRUNC_F64_U:          u8 = 0xAB;
-pub const I64_EXTEND_I32_S:         u8 = 0xAC;
-pub const I64_EXTEND_I32_U:         u8 = 0xAD;
-pub const I64_TRUNC_F32_S:          u8 = 0xAE;
-pub const I64_TRUNC_F32_U:          u8 = 0xAF;
-pub const I64_TRUNC_F64_S:          u8 = 0xB0;
-pub const I64_TRUNC_F64_U:          u8 = 0xB1;
-pub const F32_CONVERT_I32_S:        u8 = 0xB2;
-pub const F32_CONVERT_I32_U:        u8 = 0xB3;
-pub const F32_CONVERT_I64_S:        u8 = 0xB4;
-pub const F32_CONVERT_I64_U:        u8 = 0xB5;
-pub const F32_DEMOTE_F64:           u8 = 0xB6;
-pub const F64_CONVERT_I32_S:        u8 = 0xB7;
-pub const F64_CONVERT_I32_U:        u8 = 0xB8;
-pub const F64_CONVERT_I64_S:        u8 = 0xB9;
-pub const F64_CONVERT_I64_U:        u8 = 0xBA;
-pub const F64_PROMOTE_F32:          u8 = 0xBB;
-pub const I32_REINTERPRET_F32:      u8 = 0xBC;
-pub const I64_REINTERPRET_F64:      u8 = 0xBD;
-pub const F32_REINTERPRET_I32:      u8 = 0xBE;
-pub const F64_REINTERPRET_I64:      u8 = 0xBF;
-pub const I32_EXTEND8_S:            u8 = 0xC0;
-pub const I32_EXTEND16_S:           u8 = 0xC1;
-pub const I64_EXTEND8_S:            u8 = 0xC2;
-pub const I64_EXTEND16_S:           u8 = 0xC3;
-pub const I64_EXTEND32_S:           u8 = 0xC4;
-pub const REF_NULL:                 u8 = 0xd0;
-pub const REF_IS_NULL:              u8 = 0xd1;
-pub const REF_FUNC:                 u8 = 0xd2;
 
-
-pub mod xfc {
-    pub const MEMORY_COPY:              u32 = 10;
-    pub const MEMORY_FILL:              u32 = 11;
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ParseResult {
+    Opcode(Opcode),
+    Prefix(Prefix),
+    Error,
 }
 
+impl Opcode {
+    #[inline(always)]
+    pub fn parse(v: u8) -> ParseResult {
+        PARSE[v as usize]
+    }
 
-
-pub const fn name(op: u8) -> &'static str {
-    match op {
-        0x00 => "unreachable",
-        0x01 => "nop",
-        0x02 => "block",
-        0x03 => "loop",
-        0x04 => "if",
-        0x05 => "else",
-        0x0b => "end",
-        0x0c => "br",
-        0x0d => "br_if",
-        0x0e => "br_table",
-        0x0f => "return",
-        0x10 => "call",
-        0x11 => "call_indirect",
-        0x1a => "drop",
-        0x1b => "select",
-        0x1c => "typed_select",
-        0x20 => "local_get",
-        0x21 => "local_set",
-        0x22 => "local_tee",
-        0x23 => "global_get",
-        0x24 => "global_set",
-        0x25 => "table_get",
-        0x26 => "table_set",
-        0x28 => "i32_load",
-        0x29 => "i64_load",
-        0x2A => "f32_load",
-        0x2B => "f64_load",
-        0x2C => "i32_load8_s",
-        0x2D => "i32_load8_u",
-        0x2E => "i32_load16_s",
-        0x2F => "i32_load16_u",
-        0x30 => "i64_load8_s",
-        0x31 => "i64_load8_u",
-        0x32 => "i64_load16_s",
-        0x33 => "i64_load16_u",
-        0x34 => "i64_load32_s",
-        0x35 => "i64_load32_u",
-        0x36 => "i32_store",
-        0x37 => "i64_store",
-        0x38 => "f32_store",
-        0x39 => "f64_store",
-        0x3A => "i32_store8",
-        0x3B => "i32_store16",
-        0x3C => "i64_store8",
-        0x3D => "i64_store16",
-        0x3E => "i64_store32",
-        0x3F => "memory_size",
-        0x40 => "memory_grow",
-        0x41 => "i32_const",
-        0x42 => "i64_const",
-        0x43 => "f32_const",
-        0x44 => "f64_const",
-        0x45 => "i32_eqz",
-        0x46 => "i32_eq",
-        0x47 => "i32_ne",
-        0x48 => "i32_lt_s",
-        0x49 => "i32_lt_u",
-        0x4A => "i32_gt_s",
-        0x4B => "i32_gt_u",
-        0x4C => "i32_le_s",
-        0x4D => "i32_le_u",
-        0x4E => "i32_ge_s",
-        0x4F => "i32_ge_u",
-        0x50 => "i64_eqz",
-        0x51 => "i64_eq",
-        0x52 => "i64_ne",
-        0x53 => "i64_lt_s",
-        0x54 => "i64_lt_u",
-        0x55 => "i64_gt_s",
-        0x56 => "i64_gt_u",
-        0x57 => "i64_le_s",
-        0x58 => "i64_le_u",
-        0x59 => "i64_ge_s",
-        0x5A => "i64_ge_u",
-        0x5B => "f32_eq",
-        0x5C => "f32_ne",
-        0x5D => "f32_lt",
-        0x5E => "f32_gt",
-        0x5F => "f32_le",
-        0x60 => "f32_ge",
-        0x61 => "f64_eq",
-        0x62 => "f64_ne",
-        0x63 => "f64_lt",
-        0x64 => "f64_gt",
-        0x65 => "f64_le",
-        0x66 => "f64_ge",
-        0x67 => "i32_clz",
-        0x68 => "i32_ctz",
-        0x69 => "i32_popcnt",
-        0x6A => "i32_add",
-        0x6B => "i32_sub",
-        0x6C => "i32_mul",
-        0x6D => "i32_div_s",
-        0x6E => "i32_div_u",
-        0x6F => "i32_rem_s",
-        0x70 => "i32_rem_u",
-        0x71 => "i32_and",
-        0x72 => "i32_or",
-        0x73 => "i32_xor",
-        0x74 => "i32_shl",
-        0x75 => "i32_shr_s",
-        0x76 => "i32_shr_u",
-        0x77 => "i32_rotl",
-        0x78 => "i32_rotr",
-        0x79 => "i64_clz",
-        0x7A => "i64_ctz",
-        0x7B => "i64_popcnt",
-        0x7C => "i64_add",
-        0x7D => "i64_sub",
-        0x7E => "i64_mul",
-        0x7F => "i64_div_s",
-        0x80 => "i64_div_u",
-        0x81 => "i64_rem_s",
-        0x82 => "i64_rem_u",
-        0x83 => "i64_and",
-        0x84 => "i64_or",
-        0x85 => "i64_xor",
-        0x86 => "i64_shl",
-        0x87 => "i64_shr_s",
-        0x88 => "i64_shr_u",
-        0x89 => "i64_rotl",
-        0x8A => "i64_rotr",
-        0x8B => "f32_abs",
-        0x8C => "f32_neg",
-        0x8D => "f32_ceil",
-        0x8E => "f32_floor",
-        0x8F => "f32_trunc",
-        0x90 => "f32_nearest",
-        0x91 => "f32_sqrt",
-        0x92 => "f32_add",
-        0x93 => "f32_sub",
-        0x94 => "f32_mul",
-        0x95 => "f32_div",
-        0x96 => "f32_min",
-        0x97 => "f32_max",
-        0x98 => "f32_copysign",
-        0x99 => "f64_abs",
-        0x9A => "f64_neg",
-        0x9B => "f64_ceil",
-        0x9C => "f64_floor",
-        0x9D => "f64_trunc",
-        0x9E => "f64_nearest",
-        0x9F => "f64_sqrt",
-        0xA0 => "f64_add",
-        0xA1 => "f64_sub",
-        0xA2 => "f64_mul",
-        0xA3 => "f64_div",
-        0xA4 => "f64_min",
-        0xA5 => "f64_max",
-        0xA6 => "f64_copysign",
-        0xA7 => "i32_wrap_i64",
-        0xA8 => "i32_trunc_f32_s",
-        0xA9 => "i32_trunc_f32_u",
-        0xAA => "i32_trunc_f64_s",
-        0xAB => "i32_trunc_f64_u",
-        0xAC => "i64_extend_i32_s",
-        0xAD => "i64_extend_i32_u",
-        0xAE => "i64_trunc_f32_s",
-        0xAF => "i64_trunc_f32_u",
-        0xB0 => "i64_trunc_f64_s",
-        0xB1 => "i64_trunc_f64_u",
-        0xB2 => "f32_convert_i32_s",
-        0xB3 => "f32_convert_i32_u",
-        0xB4 => "f32_convert_i64_s",
-        0xB5 => "f32_convert_i64_u",
-        0xB6 => "f32_demote_f64",
-        0xB7 => "f64_convert_i32_s",
-        0xB8 => "f64_convert_i32_u",
-        0xB9 => "f64_convert_i64_s",
-        0xBA => "f64_convert_i64_u",
-        0xBB => "f64_promote_f32",
-        0xBC => "i32_reinterpret_f32",
-        0xBD => "i64_reinterpret_f64",
-        0xBE => "f32_reinterpret_i32",
-        0xBF => "f64_reinterpret_i64",
-        0xC0 => "i32_extend8_s",
-        0xC1 => "i32_extend16_s",
-        0xC2 => "i64_extend8_s",
-        0xC3 => "i64_extend16_s",
-        0xC4 => "i64_extend32_s",
-        0xd0 => "ref_null",
-        0xd1 => "ref_is_null",
-        0xd2 => "ref_func",
-
-        _ => "unknown",
+    #[inline(always)]
+    pub fn parse_prefixed(prefix: Prefix, v: u32) -> Option<Opcode> {
+        parse_prefixed_core(prefix, v)
     }
 }
 
 
-pub const fn xfc_name(op: u32) -> &'static str {
-    match op {
-        10 => "memory_copy",
-        11 => "memory_fill",
+// generated:
 
-        _ => "unknown"
-    }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum Opcode {
+    Unreachable,
+    Nop,
+    Block,
+    Loop,
+    If,
+    Else,
+    End,
+    Br,
+    BrIf,
+    BrTable,
+    Return,
+    Call,
+    CallIndirect,
+    Drop,
+    Select,
+    TypedSelect,
+    LocalGet,
+    LocalSet,
+    LocalTee,
+    GlobalGet,
+    GlobalSet,
+    TableGet,
+    TableSet,
+    I32Load,
+    I64Load,
+    F32Load,
+    F64Load,
+    I32Load8S,
+    I32Load8U,
+    I32Load16S,
+    I32Load16U,
+    I64Load8S,
+    I64Load8U,
+    I64Load16S,
+    I64Load16U,
+    I64Load32S,
+    I64Load32U,
+    I32Store,
+    I64Store,
+    F32Store,
+    F64Store,
+    I32Store8,
+    I32Store16,
+    I64Store8,
+    I64Store16,
+    I64Store32,
+    MemorySize,
+    MemoryGrow,
+    I32Const,
+    I64Const,
+    F32Const,
+    F64Const,
+    I32Eqz,
+    I32Eq,
+    I32Ne,
+    I32LtS,
+    I32LtU,
+    I32GtS,
+    I32GtU,
+    I32LeS,
+    I32LeU,
+    I32GeS,
+    I32GeU,
+    I64Eqz,
+    I64Eq,
+    I64Ne,
+    I64LtS,
+    I64LtU,
+    I64GtS,
+    I64GtU,
+    I64LeS,
+    I64LeU,
+    I64GeS,
+    I64GeU,
+    F32Eq,
+    F32Ne,
+    F32Lt,
+    F32Gt,
+    F32Le,
+    F32Ge,
+    F64Eq,
+    F64Ne,
+    F64Lt,
+    F64Gt,
+    F64Le,
+    F64Ge,
+    I32Clz,
+    I32Ctz,
+    I32Popcnt,
+    I32Add,
+    I32Sub,
+    I32Mul,
+    I32DivS,
+    I32DivU,
+    I32RemS,
+    I32RemU,
+    I32And,
+    I32Or,
+    I32Xor,
+    I32Shl,
+    I32ShrS,
+    I32ShrU,
+    I32Rotl,
+    I32Rotr,
+    I64Clz,
+    I64Ctz,
+    I64Popcnt,
+    I64Add,
+    I64Sub,
+    I64Mul,
+    I64DivS,
+    I64DivU,
+    I64RemS,
+    I64RemU,
+    I64And,
+    I64Or,
+    I64Xor,
+    I64Shl,
+    I64ShrS,
+    I64ShrU,
+    I64Rotl,
+    I64Rotr,
+    F32Abs,
+    F32Neg,
+    F32Ceil,
+    F32Floor,
+    F32Trunc,
+    F32Nearest,
+    F32Sqrt,
+    F32Add,
+    F32Sub,
+    F32Mul,
+    F32Div,
+    F32Min,
+    F32Max,
+    F32Copysign,
+    F64Abs,
+    F64Neg,
+    F64Ceil,
+    F64Floor,
+    F64Trunc,
+    F64Nearest,
+    F64Sqrt,
+    F64Add,
+    F64Sub,
+    F64Mul,
+    F64Div,
+    F64Min,
+    F64Max,
+    F64Copysign,
+    I32WrapI64,
+    I32TruncF32S,
+    I32TruncF32U,
+    I32TruncF64S,
+    I32TruncF64U,
+    I64ExtendI32S,
+    I64ExtendI32U,
+    I64TruncF32S,
+    I64TruncF32U,
+    I64TruncF64S,
+    I64TruncF64U,
+    F32ConvertI32S,
+    F32ConvertI32U,
+    F32ConvertI64S,
+    F32ConvertI64U,
+    F32DemoteF64,
+    F64ConvertI32S,
+    F64ConvertI32U,
+    F64ConvertI64S,
+    F64ConvertI64U,
+    F64PromoteF32,
+    I32ReinterpretF32,
+    I64ReinterpretF64,
+    F32ReinterpretI32,
+    F64ReinterpretI64,
+    I32Extend8S,
+    I32Extend16S,
+    I64Extend8S,
+    I64Extend16S,
+    I64Extend32S,
+    RefNull,
+    RefIsNull,
+    RefFunc,
+    MemoryCopy,
+    MemoryFill,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum Prefix {
+    Xfc,
+}
+const PARSE: &[ParseResult; 256] = &[
+    ParseResult::Opcode(Opcode::Unreachable),
+    ParseResult::Opcode(Opcode::Nop),
+    ParseResult::Opcode(Opcode::Block),
+    ParseResult::Opcode(Opcode::Loop),
+    ParseResult::Opcode(Opcode::If),
+    ParseResult::Opcode(Opcode::Else),
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Opcode(Opcode::End),
+    ParseResult::Opcode(Opcode::Br),
+    ParseResult::Opcode(Opcode::BrIf),
+    ParseResult::Opcode(Opcode::BrTable),
+    ParseResult::Opcode(Opcode::Return),
+    ParseResult::Opcode(Opcode::Call),
+    ParseResult::Opcode(Opcode::CallIndirect),
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Opcode(Opcode::Drop),
+    ParseResult::Opcode(Opcode::Select),
+    ParseResult::Opcode(Opcode::TypedSelect),
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Opcode(Opcode::LocalGet),
+    ParseResult::Opcode(Opcode::LocalSet),
+    ParseResult::Opcode(Opcode::LocalTee),
+    ParseResult::Opcode(Opcode::GlobalGet),
+    ParseResult::Opcode(Opcode::GlobalSet),
+    ParseResult::Opcode(Opcode::TableGet),
+    ParseResult::Opcode(Opcode::TableSet),
+    ParseResult::Error,
+    ParseResult::Opcode(Opcode::I32Load),
+    ParseResult::Opcode(Opcode::I64Load),
+    ParseResult::Opcode(Opcode::F32Load),
+    ParseResult::Opcode(Opcode::F64Load),
+    ParseResult::Opcode(Opcode::I32Load8S),
+    ParseResult::Opcode(Opcode::I32Load8U),
+    ParseResult::Opcode(Opcode::I32Load16S),
+    ParseResult::Opcode(Opcode::I32Load16U),
+    ParseResult::Opcode(Opcode::I64Load8S),
+    ParseResult::Opcode(Opcode::I64Load8U),
+    ParseResult::Opcode(Opcode::I64Load16S),
+    ParseResult::Opcode(Opcode::I64Load16U),
+    ParseResult::Opcode(Opcode::I64Load32S),
+    ParseResult::Opcode(Opcode::I64Load32U),
+    ParseResult::Opcode(Opcode::I32Store),
+    ParseResult::Opcode(Opcode::I64Store),
+    ParseResult::Opcode(Opcode::F32Store),
+    ParseResult::Opcode(Opcode::F64Store),
+    ParseResult::Opcode(Opcode::I32Store8),
+    ParseResult::Opcode(Opcode::I32Store16),
+    ParseResult::Opcode(Opcode::I64Store8),
+    ParseResult::Opcode(Opcode::I64Store16),
+    ParseResult::Opcode(Opcode::I64Store32),
+    ParseResult::Opcode(Opcode::MemorySize),
+    ParseResult::Opcode(Opcode::MemoryGrow),
+    ParseResult::Opcode(Opcode::I32Const),
+    ParseResult::Opcode(Opcode::I64Const),
+    ParseResult::Opcode(Opcode::F32Const),
+    ParseResult::Opcode(Opcode::F64Const),
+    ParseResult::Opcode(Opcode::I32Eqz),
+    ParseResult::Opcode(Opcode::I32Eq),
+    ParseResult::Opcode(Opcode::I32Ne),
+    ParseResult::Opcode(Opcode::I32LtS),
+    ParseResult::Opcode(Opcode::I32LtU),
+    ParseResult::Opcode(Opcode::I32GtS),
+    ParseResult::Opcode(Opcode::I32GtU),
+    ParseResult::Opcode(Opcode::I32LeS),
+    ParseResult::Opcode(Opcode::I32LeU),
+    ParseResult::Opcode(Opcode::I32GeS),
+    ParseResult::Opcode(Opcode::I32GeU),
+    ParseResult::Opcode(Opcode::I64Eqz),
+    ParseResult::Opcode(Opcode::I64Eq),
+    ParseResult::Opcode(Opcode::I64Ne),
+    ParseResult::Opcode(Opcode::I64LtS),
+    ParseResult::Opcode(Opcode::I64LtU),
+    ParseResult::Opcode(Opcode::I64GtS),
+    ParseResult::Opcode(Opcode::I64GtU),
+    ParseResult::Opcode(Opcode::I64LeS),
+    ParseResult::Opcode(Opcode::I64LeU),
+    ParseResult::Opcode(Opcode::I64GeS),
+    ParseResult::Opcode(Opcode::I64GeU),
+    ParseResult::Opcode(Opcode::F32Eq),
+    ParseResult::Opcode(Opcode::F32Ne),
+    ParseResult::Opcode(Opcode::F32Lt),
+    ParseResult::Opcode(Opcode::F32Gt),
+    ParseResult::Opcode(Opcode::F32Le),
+    ParseResult::Opcode(Opcode::F32Ge),
+    ParseResult::Opcode(Opcode::F64Eq),
+    ParseResult::Opcode(Opcode::F64Ne),
+    ParseResult::Opcode(Opcode::F64Lt),
+    ParseResult::Opcode(Opcode::F64Gt),
+    ParseResult::Opcode(Opcode::F64Le),
+    ParseResult::Opcode(Opcode::F64Ge),
+    ParseResult::Opcode(Opcode::I32Clz),
+    ParseResult::Opcode(Opcode::I32Ctz),
+    ParseResult::Opcode(Opcode::I32Popcnt),
+    ParseResult::Opcode(Opcode::I32Add),
+    ParseResult::Opcode(Opcode::I32Sub),
+    ParseResult::Opcode(Opcode::I32Mul),
+    ParseResult::Opcode(Opcode::I32DivS),
+    ParseResult::Opcode(Opcode::I32DivU),
+    ParseResult::Opcode(Opcode::I32RemS),
+    ParseResult::Opcode(Opcode::I32RemU),
+    ParseResult::Opcode(Opcode::I32And),
+    ParseResult::Opcode(Opcode::I32Or),
+    ParseResult::Opcode(Opcode::I32Xor),
+    ParseResult::Opcode(Opcode::I32Shl),
+    ParseResult::Opcode(Opcode::I32ShrS),
+    ParseResult::Opcode(Opcode::I32ShrU),
+    ParseResult::Opcode(Opcode::I32Rotl),
+    ParseResult::Opcode(Opcode::I32Rotr),
+    ParseResult::Opcode(Opcode::I64Clz),
+    ParseResult::Opcode(Opcode::I64Ctz),
+    ParseResult::Opcode(Opcode::I64Popcnt),
+    ParseResult::Opcode(Opcode::I64Add),
+    ParseResult::Opcode(Opcode::I64Sub),
+    ParseResult::Opcode(Opcode::I64Mul),
+    ParseResult::Opcode(Opcode::I64DivS),
+    ParseResult::Opcode(Opcode::I64DivU),
+    ParseResult::Opcode(Opcode::I64RemS),
+    ParseResult::Opcode(Opcode::I64RemU),
+    ParseResult::Opcode(Opcode::I64And),
+    ParseResult::Opcode(Opcode::I64Or),
+    ParseResult::Opcode(Opcode::I64Xor),
+    ParseResult::Opcode(Opcode::I64Shl),
+    ParseResult::Opcode(Opcode::I64ShrS),
+    ParseResult::Opcode(Opcode::I64ShrU),
+    ParseResult::Opcode(Opcode::I64Rotl),
+    ParseResult::Opcode(Opcode::I64Rotr),
+    ParseResult::Opcode(Opcode::F32Abs),
+    ParseResult::Opcode(Opcode::F32Neg),
+    ParseResult::Opcode(Opcode::F32Ceil),
+    ParseResult::Opcode(Opcode::F32Floor),
+    ParseResult::Opcode(Opcode::F32Trunc),
+    ParseResult::Opcode(Opcode::F32Nearest),
+    ParseResult::Opcode(Opcode::F32Sqrt),
+    ParseResult::Opcode(Opcode::F32Add),
+    ParseResult::Opcode(Opcode::F32Sub),
+    ParseResult::Opcode(Opcode::F32Mul),
+    ParseResult::Opcode(Opcode::F32Div),
+    ParseResult::Opcode(Opcode::F32Min),
+    ParseResult::Opcode(Opcode::F32Max),
+    ParseResult::Opcode(Opcode::F32Copysign),
+    ParseResult::Opcode(Opcode::F64Abs),
+    ParseResult::Opcode(Opcode::F64Neg),
+    ParseResult::Opcode(Opcode::F64Ceil),
+    ParseResult::Opcode(Opcode::F64Floor),
+    ParseResult::Opcode(Opcode::F64Trunc),
+    ParseResult::Opcode(Opcode::F64Nearest),
+    ParseResult::Opcode(Opcode::F64Sqrt),
+    ParseResult::Opcode(Opcode::F64Add),
+    ParseResult::Opcode(Opcode::F64Sub),
+    ParseResult::Opcode(Opcode::F64Mul),
+    ParseResult::Opcode(Opcode::F64Div),
+    ParseResult::Opcode(Opcode::F64Min),
+    ParseResult::Opcode(Opcode::F64Max),
+    ParseResult::Opcode(Opcode::F64Copysign),
+    ParseResult::Opcode(Opcode::I32WrapI64),
+    ParseResult::Opcode(Opcode::I32TruncF32S),
+    ParseResult::Opcode(Opcode::I32TruncF32U),
+    ParseResult::Opcode(Opcode::I32TruncF64S),
+    ParseResult::Opcode(Opcode::I32TruncF64U),
+    ParseResult::Opcode(Opcode::I64ExtendI32S),
+    ParseResult::Opcode(Opcode::I64ExtendI32U),
+    ParseResult::Opcode(Opcode::I64TruncF32S),
+    ParseResult::Opcode(Opcode::I64TruncF32U),
+    ParseResult::Opcode(Opcode::I64TruncF64S),
+    ParseResult::Opcode(Opcode::I64TruncF64U),
+    ParseResult::Opcode(Opcode::F32ConvertI32S),
+    ParseResult::Opcode(Opcode::F32ConvertI32U),
+    ParseResult::Opcode(Opcode::F32ConvertI64S),
+    ParseResult::Opcode(Opcode::F32ConvertI64U),
+    ParseResult::Opcode(Opcode::F32DemoteF64),
+    ParseResult::Opcode(Opcode::F64ConvertI32S),
+    ParseResult::Opcode(Opcode::F64ConvertI32U),
+    ParseResult::Opcode(Opcode::F64ConvertI64S),
+    ParseResult::Opcode(Opcode::F64ConvertI64U),
+    ParseResult::Opcode(Opcode::F64PromoteF32),
+    ParseResult::Opcode(Opcode::I32ReinterpretF32),
+    ParseResult::Opcode(Opcode::I64ReinterpretF64),
+    ParseResult::Opcode(Opcode::F32ReinterpretI32),
+    ParseResult::Opcode(Opcode::F64ReinterpretI64),
+    ParseResult::Opcode(Opcode::I32Extend8S),
+    ParseResult::Opcode(Opcode::I32Extend16S),
+    ParseResult::Opcode(Opcode::I64Extend8S),
+    ParseResult::Opcode(Opcode::I64Extend16S),
+    ParseResult::Opcode(Opcode::I64Extend32S),
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Opcode(Opcode::RefNull),
+    ParseResult::Opcode(Opcode::RefIsNull),
+    ParseResult::Opcode(Opcode::RefFunc),
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Prefix(Prefix::Xfc),
+    ParseResult::Error,
+    ParseResult::Error,
+    ParseResult::Error,
+];
+#[inline]
+fn parse_xfc(v: u32) -> Option<Opcode> {
+    Some(match v {
+        10 => Opcode::MemoryCopy,
+        11 => Opcode::MemoryFill,
+        _ => return None
+    })
+}
+#[inline]
+fn parse_prefixed_core(prefix: Prefix, v: u32) -> Option<Opcode> {
+    match prefix {
+        Prefix::Xfc => parse_xfc(v),
+    }
+}
 

@@ -5,8 +5,9 @@ def to_upper_camel(name):
 
 
 def opcode_enum():
+    print("#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]")
     print("#[repr(u8)]")
-    print("enum Opcode {")
+    print("pub enum Opcode {")
     for opcode in opcodes:
         name = to_upper_camel(opcode[COL_NAME])
         print(f"    {name},")
@@ -37,23 +38,24 @@ def parse_table():
                 assert isinstance(tab[prefix], dict)
             tab[prefix][u32] = name
 
+    print("#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]")
     print("#[repr(u8)]")
-    print("enum Prefix {")
+    print("pub enum Prefix {")
     for k, v in sorted(tab.items()):
         if isinstance(v, dict):
             print(f"    X{k:x},")
     print("}")
 
-    print("const PARSE: &[u16; 256] = &[")
+    print("const PARSE: &[ParseResult; 256] = &[")
     for b in range(256):
         v = tab.get(b)
         if v:
             if isinstance(v, str):
-                print(f"    Opcode::{to_upper_camel(v)} as u16,")
+                print(f"    ParseResult::Opcode(Opcode::{to_upper_camel(v)}),")
             else:
-                print(f"    0x8000 | Prefix::X{k:x} as u16,")
+                print(f"    ParseResult::Prefix(Prefix::X{k:x}),")
         else:
-            print("    0xffff,")
+            print("    ParseResult::Error,")
     print("];")
 
     for k, v in sorted(tab.items()):
@@ -69,7 +71,7 @@ def parse_table():
         print("}")
 
     print("#[inline]")
-    print("fn parse_prefixed(prefix: Prefix, v: u32) -> Option<Opcode> {")
+    print("fn parse_prefixed_core(prefix: Prefix, v: u32) -> Option<Opcode> {")
     print("    match prefix {")
     for k, v in sorted(tab.items()):
         if not isinstance(v, dict):
@@ -83,8 +85,16 @@ def opcode_class():
     for opcode in opcodes:
         name = opcode[COL_NAME]
         imm = opcode[COL_IMM]
+        args = opcode[COL_ARGS]
+        rets = opcode[COL_RETS]
         flags = opcode[COL_FLAGS]
-        if len(imm) > 0 or "c" in flags:
+
+        special = "c" in flags
+        assert not len(imm) > 0 or special
+        assert not special or len(args) == 0
+        assert not special or len(rets) == 0
+
+        if special:
             print(name)
         else:
             print("#pure", name)
