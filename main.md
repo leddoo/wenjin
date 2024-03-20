@@ -21,9 +21,10 @@
 
 - rw#2:
     - table driven validator.
-        - generate opcode class table.
-            - with push/pop for basic.
-        - class dependent validation.
+        - br table.
+        - typed select.
+        - see if it still works. diff against old version.
+        - unreachable -> `False`.
     - immutable type stack.
     - optionally generate pc -> type top & pc -> br hash-maps.
     - wasm interp.

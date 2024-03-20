@@ -14,6 +14,8 @@ pub struct Validator<'a> {
 
     pub module: &'a Module<'a>,
 
+    pos: usize,
+
     locals: Vec<ValueType>,
     stack: Vec<ValueType>,
     frames: Vec<ControlFrame>,
@@ -42,6 +44,7 @@ impl<'a> Validator<'a> {
             stack_limit: DEFAULT_STACK_LIMIT,
             frame_limit: DEFAULT_FRAME_LIMIT,
             module,
+            pos: 0,
             locals: Vec::new(),
             stack: Vec::new(),
             frames: Vec::new(),
@@ -122,8 +125,7 @@ impl<'a> Validator<'a> {
     fn push(&mut self, ty: ValueType) -> Result<()> {
         if !self.is_unreachable() {
             if self.stack.len() >= self.stack_limit as usize {
-                todo!()
-                //return Err(ValidatorError::StackLimit);
+                return Err(self.error(ErrorKind::StackLimit));
             }
 
             self.stack.push(ty);
@@ -142,8 +144,7 @@ impl<'a> Validator<'a> {
         debug_assert!(!self.is_unreachable());
 
         if self.stack.len() <= self.frames.rev(0).height as usize {
-            todo!()
-            //return Err(ValidatorError::StackUnderflow);
+            return Err(self.error(ErrorKind::StackUnderflow));
         }
 
         return Ok(self.stack.pop().unwrap());
@@ -152,14 +153,12 @@ impl<'a> Validator<'a> {
     fn expect(&mut self, expected_ty: ValueType) -> Result<()> {
         if !self.is_unreachable() {
             if self.stack.len() <= self.frames.rev(0).height as usize {
-                todo!()
-                //return Err(ValidatorError::StackUnderflow);
+                return Err(self.error(ErrorKind::StackUnderflow));
             }
 
             let ty = self.stack.pop().unwrap();
             if ty != expected_ty {
-                todo!()
-                //return Err(ValidatorError::TypeMismatch { expected: expected_ty, found: ty });
+                return Err(self.error(ErrorKind::TypeMismatch { expected: expected_ty, found: ty }));
             }
         }
         return Ok(());
@@ -176,8 +175,7 @@ impl<'a> Validator<'a> {
     // pushes the block begin types.
     fn push_frame(&mut self, kind: ControlFrameKind, ty: BlockType) -> Result<()> {
         if self.frames.len() >= self.frame_limit as usize {
-            //return Err(ValidatorError::FrameLimit);
-            todo!()
+            return Err(self.error(ErrorKind::FrameLimit));
         }
 
         let height = self.stack.len() as u32;
@@ -197,14 +195,12 @@ impl<'a> Validator<'a> {
     // expects the block end types.
     fn pop_frame(&mut self) -> Result<ControlFrame> {
         let Some(frame) = self.frames.last().copied() else {
-            todo!()
-            //return Err(ValidatorError::UnexpectedEnd);
+            return Err(self.error(ErrorKind::UnexpectedEnd));
         };
 
         self.expect_n(self.block_end_types(frame.ty))?;
         if self.stack.len() != frame.height as usize {
-            todo!()
-            //return Err(ValidatorError::FrameExtraStack);
+            return Err(self.error(ErrorKind::FrameExtraStack));
         }
 
         let frame = self.frames.pop().unwrap();
@@ -216,48 +212,41 @@ impl<'a> Validator<'a> {
         // @todo: get_rev
         let idx = idx as usize;
         if idx >= self.frames.len() {
-            todo!()
-            //return Err(ValidatorError::InvalidLabel);
+            return Err(self.error(ErrorKind::InvalidLabel));
         }
         Ok(*self.frames.rev(idx))
     }
 
     fn ty(&self, idx: TypeIdx) -> Result<FuncType<'a>> {
         self.module.types.get(idx as usize).copied()
-            .ok_or_else(|| todo!())
-            //.ok_or_else(|| ValidatorError::InvalidTypeIdx)
+            .ok_or_else(|| self.error(ErrorKind::InvalidTypeIdx))
     }
 
     fn local(&self, idx: u32) -> Result<ValueType> {
         self.locals.get(idx as usize).copied()
-            .ok_or_else(|| todo!())
-            //.ok_or_else(|| ValidatorError::InvalidLocalIdx)
+            .ok_or_else(|| self.error(ErrorKind::InvalidLocalIdx))
     }
 
     fn func(&self, idx: FuncIdx) -> Result<FuncType<'a>> {
         let type_idx = self.module.get_func(idx)
-            .ok_or_else(|| todo!())?;
-            //.ok_or_else(|| ValidatorError::InvalidFuncIdx)?;
+            .ok_or_else(|| self.error(ErrorKind::InvalidFuncIdx))?;
         // by imports-valid, funcs-valid.
         Ok(self.module.types[type_idx as usize])
     }
 
     fn table(&self, idx: TableIdx) -> Result<TableType> {
         self.module.get_table(idx)
-            .ok_or_else(|| todo!())
-            //.ok_or_else(|| ValidatorError::InvalidTableIdx)
+            .ok_or_else(|| self.error(ErrorKind::InvalidTableIdx))
     }
 
     fn memory(&self, idx: TableIdx) -> Result<MemoryType> {
         self.module.get_memory(idx)
-            .ok_or_else(|| todo!())
-            //.ok_or_else(|| ValidatorError::InvalidMemoryIdx)
+            .ok_or_else(|| self.error(ErrorKind::InvalidMemoryIdx))
     }
 
     fn global(&self, idx: u32) -> Result<GlobalType> {
         self.module.get_global(idx)
-            .ok_or_else(|| todo!())
-            //.ok_or_else(|| ValidatorError::InvalidGlobalIdx)
+            .ok_or_else(|| self.error(ErrorKind::InvalidGlobalIdx))
     }
 
 
@@ -271,17 +260,13 @@ impl<'a> Validator<'a> {
             ValueType::V128 => (),
 
             ValueType::FuncRef |
-            ValueType::ExternRef => todo!()//return Err(ValidatorError::LoadStoreRefType)
+            ValueType::ExternRef => return Err(self.error(ErrorKind::LoadStoreRefType))
         };
 
-        let Some(align) = 1u32.checked_shl(align) else {
-            todo!()
-            //return Err(ValidatorError::AlignTooLarge);
-        };
-
+        let align = 1u32.checked_shl(align)
+            .ok_or_else(|| self.error(ErrorKind::AlignTooLarge))?;
         if align > max_align {
-            todo!()
-            //return Err(ValidatorError::AlignTooLarge);
+            return Err(self.error(ErrorKind::AlignTooLarge));
         }
 
         return Ok(());
@@ -359,872 +344,292 @@ impl<'a> Validator<'a> {
 
 
     pub fn validate_func(&mut self, parser: &mut crate::Parser) -> Result<()> {
-
         while !parser.reader.is_empty() {
-            let opcode = parser.parse_opcode().map_err(|_| todo!())?;
+            self.pos = parser.reader.offset();
+            let opcode = parser.parse_opcode()?;
+
+            use crate::opcode::OpcodeClass;
+            match opcode.class() {
+                OpcodeClass::Basic { pop, push } => {
+                    // @todo: mem (if not already checked & opcode requires mem0)
+                    self.expect_n(pop)?;
+                    self.push_n(push)?;
+                }
+
+                OpcodeClass::Unreachable => {
+                    self.unreachable();
+                }
+
+                OpcodeClass::Block => {
+                    let ty = parser.parse_block_type()?;
+                    self.expect_n(self.block_begin_types(ty))?;
+                    self.push_frame(ControlFrameKind::Block, ty)?;
+                }
+
+                OpcodeClass::Loop => {
+                    let ty = parser.parse_block_type()?;
+                    self.expect_n(self.block_begin_types(ty))?;
+                    self.push_frame(ControlFrameKind::Loop, ty)?;
+                }
+
+                OpcodeClass::If => {
+                    let ty = parser.parse_block_type()?;
+                    self.expect(ValueType::I32)?;
+                    self.expect_n(self.block_begin_types(ty))?;
+                    self.push_frame(ControlFrameKind::If, ty)?;
+                }
+
+                OpcodeClass::Else => {
+                    if self.frames.is_empty() {
+                        return Err(self.error(ErrorKind::UnexpectedElse));
+                    }
+                    let frame = self.pop_frame()?;
+                    if frame.kind != ControlFrameKind::If {
+                        return Err(self.error(ErrorKind::UnexpectedElse));
+                    }
+                    self.push_frame(ControlFrameKind::Else, frame.ty)?;
+                }
+
+                OpcodeClass::End => {
+                    let frame = self.pop_frame()?;
+                    if frame.kind == ControlFrameKind::If {
+                        let begin_types = self.block_begin_types(frame.ty);
+                        let end_types = self.block_end_types(frame.ty);
+                        if end_types != begin_types {
+                            return Err(self.error(ErrorKind::NonIdIfWithoutElse));
+                        }
+                    }
+                    if self.frames.len() > 0 {
+                        self.push_n(self.block_end_types(frame.ty))?;
+                    }
+                    todo!("else, ensure we're done.")
+                }
+
+                OpcodeClass::Br => {
+                    let label = parser.parse_label()?;
+                    let frame = self.label(label)?;
+                    self.expect_n(self.frame_br_types(&frame))?;
+                    self.unreachable();
+                }
+
+                OpcodeClass::BrIf => {
+                    let label = parser.parse_label()?;
+                    let frame = self.label(label)?;
+                    self.expect(ValueType::I32)?;
+                    let tys = self.frame_br_types(&frame);
+                    self.expect_n(tys)?;
+                    self.push_n(tys)?;
+                }
+
+                OpcodeClass::BrTable => {
+                    let table = parser.parse_br_table()?;
+                    let frame = self.label(table.default)?;
+                    let tys = self.frame_br_types(&frame);
+                    for label in table.labels() {
+                        let f = self.label(label)?;
+                        if !self.is_unreachable() && self.frame_br_types(&f) != tys {
+                            return Err(self.error(ErrorKind::BrTableInvalidTargetTypes { label }));
+                        }
+                    }
+                    self.expect(ValueType::I32)?;
+                    self.expect_n(tys)?;
+                    self.unreachable();
+                }
+
+                OpcodeClass::Return => {
+                    let frame = self.frames[0];
+                    self.expect_n(self.block_end_types(frame.ty))?;
+                    self.unreachable();
+                }
+
+                OpcodeClass::Call => {
+                    let func = parser.parse_func_idx()?;
+                    let ty = self.func(func)?;
+                    self.expect_n(ty.params)?;
+                    self.push_n(ty.rets)?
+                }
+
+                OpcodeClass::CallIndirect => {
+                    let ty = parser.parse_type_idx()?;
+                    let table = parser.parse_table_idx()?;
+
+                    let table = self.table(table)?;
+                    if table.ty != RefType::FuncRef {
+                        return Err(self.error(ErrorKind::CallIndirectTableNotOfFuncRefs));
+                    }
+
+                    let ty = self.ty(ty)?;
+                    self.expect(ValueType::I32)?;
+                    self.expect_n(ty.params)?;
+                    self.push_n(ty.rets)?;
+                }
+
+                OpcodeClass::Drop => {
+                    if !self.is_unreachable() {
+                        self.pop()?;
+                    }
+                }
+
+                OpcodeClass::Select => {
+                    self.expect(ValueType::I32)?;
+
+                    if !self.is_unreachable() {
+                        let t1 = self.pop()?;
+                        let t2 = self.pop()?;
+
+                        if t1.is_ref() || t2.is_ref() {
+                            return Err(self.error(ErrorKind::SelectUnexpectedRefType));
+                        }
+
+                        if t1 != t2 {
+                            return Err(self.error(ErrorKind::SelectTypeMismatch(t1, t2)));
+                        }
+
+                        self.push(t1)?;
+                    }
+                }
+
+                OpcodeClass::TypedSelect => {
+                    let ty = parser.parse_typed_select()?;
+                    self.expect(ValueType::I32)?;
+                    self.expect(ty)?;
+                    self.expect(ty)?;
+                    self.push(ty)?;
+                }
+
+                OpcodeClass::LocalGet => {
+                    let idx = parser.parse_local_idx()?;
+                    let ty = self.local(idx)?;
+                    self.push(ty)?;
+                }
+
+                OpcodeClass::LocalSet => {
+                    let idx = parser.parse_local_idx()?;
+                    let ty = self.local(idx)?;
+                    self.expect(ty)?;
+                }
+
+                OpcodeClass::LocalTee => {
+                    let idx = parser.parse_local_idx()?;
+                    let ty = self.local(idx)?;
+                    self.expect(ty)?;
+                    self.push(ty)?;
+                }
+
+                OpcodeClass::GlobalGet => {
+                    let idx = parser.parse_global_idx()?;
+                    let g = self.global(idx)?;
+                    self.push(g.ty)?;
+                }
+
+                OpcodeClass::GlobalSet => {
+                    let idx = parser.parse_global_idx()?;
+                    let g = self.global(idx)?;
+                    if !g.mutable {
+                        return Err(self.error(ErrorKind::GlobalNotMutable));
+                    }
+                    self.expect(g.ty)?;
+                }
+
+                OpcodeClass::TableGet => {
+                    let idx = parser.parse_u32()?;
+                    let _ = idx;
+                    return Err(self.error(ErrorKind::Todo));
+                }
+
+                OpcodeClass::TableSet => {
+                    let idx = parser.parse_u32()?;
+                    let _ = idx;
+                    return Err(self.error(ErrorKind::Todo));
+                }
+
+                OpcodeClass::MemorySize => {
+                    let mem = parser.parse_memory_idx()?;
+                    self.memory(mem)?;
+                    self.push(ValueType::I32)?;
+                }
+
+                OpcodeClass::MemoryGrow => {
+                    let mem = parser.parse_memory_idx()?;
+                    self.memory(mem)?;
+                    self.expect(ValueType::I32)?;
+                    self.push(ValueType::I32)?;
+                }
+
+                OpcodeClass::I32Const => {
+                    let _ = parser.parse_i32()?;
+                    self.push(ValueType::I32)?;
+                }
+
+                OpcodeClass::I64Const => {
+                    let _ = parser.parse_i64()?;
+                    self.push(ValueType::I64)?;
+                }
+
+                OpcodeClass::F32Const => {
+                    let _ = parser.parse_f32()?;
+                    self.push(ValueType::F32)?;
+                }
+
+                OpcodeClass::F64Const => {
+                    let _ = parser.parse_f64()?;
+                    self.push(ValueType::F64)?;
+                }
+
+                OpcodeClass::RefNull => {
+                    let ty = parser.parse_ref_type()?;
+                    self.push(ty.to_value_type())?;
+                }
+
+                OpcodeClass::RefIsNull => {
+                    if !self.is_unreachable() {
+                        let ty = self.pop()?;
+                        match ty {
+                            ValueType::FuncRef |
+                            ValueType::ExternRef => (),
+
+                            ValueType::I32 |
+                            ValueType::I64 |
+                            ValueType::F32 |
+                            ValueType::F64 |
+                            ValueType::V128 => return Err(self.error(
+                                ErrorKind::RefTypeExpected { found: ty }))
+                        }
+
+                        self.push(ValueType::I32)?;
+                    }
+                }
+
+                OpcodeClass::RefFunc => {
+                    return Err(self.error(ErrorKind::Todo));
+                }
+
+                OpcodeClass::MemoryCopy => {
+                    let dst = parser.parse_memory_idx()?;
+                    let src = parser.parse_memory_idx()?;
+                    self.memory(dst)?;
+                    self.memory(src)?;
+                    self.expect(ValueType::I32)?;
+                    self.expect(ValueType::I32)?;
+                    self.expect(ValueType::I32)?;
+                }
+
+                OpcodeClass::MemoryFill => {
+                    let mem = parser.parse_memory_idx()?;
+                    self.memory(mem)?;
+                    self.expect(ValueType::I32)?;
+                    self.expect(ValueType::I32)?;
+                    self.expect(ValueType::I32)?;
+                }
+            }
         }
 
         todo!()
     }
-}
 
-/*
-impl<'a> OperatorVisitor<'a> for Validator<'a> {
-    type Output = Result<(), ValidatorError>;
-
-    fn visit_unreachable(&mut self) -> Self::Output {
-        self.unreachable();
-        Ok(())
-    }
-
-    fn visit_nop(&mut self) -> Self::Output {
-        Ok(())
-    }
-
-    fn visit_block(&mut self, ty: BlockType) -> Self::Output {
-        self.expect_n(self.block_begin_types(ty))?;
-        self.push_frame(ControlFrameKind::Block, ty)
-    }
-
-    fn visit_loop(&mut self, ty: BlockType) -> Self::Output {
-        self.expect_n(self.block_begin_types(ty))?;
-        self.push_frame(ControlFrameKind::Loop, ty)
-    }
-
-    fn visit_if(&mut self, ty: BlockType) -> Self::Output {
-        self.expect(ValueType::I32)?;
-        self.expect_n(self.block_begin_types(ty))?;
-        self.push_frame(ControlFrameKind::If, ty)
-    }
-
-    fn visit_else(&mut self) -> Self::Output {
-        if self.frames.is_empty() {
-            return Err(ValidatorError::UnexpectedElse);
-        }
-        let frame = self.pop_frame()?;
-        if frame.kind != ControlFrameKind::If {
-            return Err(ValidatorError::UnexpectedElse);
-        }
-        self.push_frame(ControlFrameKind::Else, frame.ty)
-    }
-
-    fn visit_end(&mut self) -> Self::Output {
-        let frame = self.pop_frame()?;
-        if frame.kind == ControlFrameKind::If {
-            let begin_types = self.block_begin_types(frame.ty);
-            let end_types = self.block_end_types(frame.ty);
-            if end_types != begin_types {
-                return Err(ValidatorError::NonIdIfWithoutElse);
-            }
-        }
-        if self.frames.len() > 0 {
-            self.push_n(self.block_end_types(frame.ty))?;
-        }
-        return Ok(());
-    }
-
-    fn visit_br(&mut self, label: u32) -> Self::Output {
-        let frame = self.label(label)?;
-        self.expect_n(self.frame_br_types(&frame))?;
-        self.unreachable();
-        return Ok(());
-    }
-
-    fn visit_br_if(&mut self, label: u32) -> Self::Output {
-        let frame = self.label(label)?;
-        self.expect(ValueType::I32)?;
-        let tys = self.frame_br_types(&frame);
-        self.expect_n(tys)?;
-        self.push_n(tys)
-    }
-
-    fn visit_br_table(&mut self, table: BrTable) -> Self::Output {
-        let frame = self.label(table.default)?;
-        let tys = self.frame_br_types(&frame);
-        for label in table.labels() {
-            let f = self.label(label)?;
-            if !self.is_unreachable() && self.frame_br_types(&f) != tys {
-                return Err(ValidatorError::BrTableInvalidTargetTypes { label });
-            }
-        }
-        self.expect(ValueType::I32)?;
-        self.expect_n(tys)?;
-        self.unreachable();
-        return Ok(());
-    }
-
-    fn visit_return(&mut self) -> Self::Output {
-        let frame = self.frames[0];
-        self.expect_n(self.block_end_types(frame.ty))?;
-        self.unreachable();
-        return Ok(());
-    }
-
-    fn visit_call(&mut self, func: FuncIdx) -> Self::Output {
-        let ty = self.func(func)?;
-        self.expect_n(ty.params)?;
-        self.push_n(ty.rets)
-    }
-
-    fn visit_call_indirect(&mut self, ty: TypeIdx, table: TableIdx) -> Self::Output {
-        let table = self.table(table)?;
-        if table.ty != RefType::FuncRef {
-            return Err(ValidatorError::CallIndirectTableNotOfFuncRefs);
-        }
-
-        let ty = self.ty(ty)?;
-        self.expect(ValueType::I32)?;
-        self.expect_n(ty.params)?;
-        self.push_n(ty.rets)
-    }
-
-    fn visit_drop(&mut self) -> Self::Output {
-        if !self.is_unreachable() {
-            self.pop()?;
-        }
-        return Ok(());
-    }
-
-    fn visit_select(&mut self) -> Self::Output {
-        self.expect(ValueType::I32)?;
-
-        if !self.is_unreachable() {
-            let t1 = self.pop()?;
-            let t2 = self.pop()?;
-
-            if t1.is_ref() || t2.is_ref() {
-                return Err(ValidatorError::SelectUnexpectedRefType);
-            }
-
-            if t1 != t2 {
-                return Err(ValidatorError::SelectTypeMismatch(t1, t2));
-            }
-
-            self.push(t1)?;
-        }
-
-        return Ok(());
-    }
-
-    fn visit_typed_select(&mut self, ty: ValueType) -> Self::Output {
-        self.expect(ValueType::I32)?;
-        self.expect(ty)?;
-        self.expect(ty)?;
-        self.push(ty)
-    }
-
-    fn visit_local_get(&mut self, idx: u32) -> Self::Output {
-        let ty = self.local(idx)?;
-        self.push(ty)
-    }
-
-    fn visit_local_set(&mut self, idx: u32) -> Self::Output {
-        let ty = self.local(idx)?;
-        self.expect(ty)
-    }
-
-    fn visit_local_tee(&mut self, idx: u32) -> Self::Output {
-        let ty = self.local(idx)?;
-        self.expect(ty)?;
-        self.push(ty)
-    }
-
-    fn visit_global_get(&mut self, idx: GlobalIdx) -> Self::Output {
-        let g = self.global(idx)?;
-        self.push(g.ty)
-    }
-
-    fn visit_global_set(&mut self, idx: GlobalIdx) -> Self::Output {
-        let g = self.global(idx)?;
-        if !g.mutable {
-            return Err(ValidatorError::GlobalNotMutable);
-        }
-        self.expect(g.ty)
-    }
-
-    fn visit_table_get(&mut self, idx: TableIdx) -> Self::Output {
-        let _ = idx;
-        return Err(ValidatorError::Todo);
-    }
-
-    fn visit_table_set(&mut self, idx: TableIdx) -> Self::Output {
-        let _ = idx;
-        return Err(ValidatorError::Todo);
-    }
-
-    fn visit_i32_load(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.load(ValueType::I32, align, offset, 4)
-    }
-
-    fn visit_i64_load(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.load(ValueType::I64, align, offset, 8)
-    }
-
-    fn visit_f32_load(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.load(ValueType::F32, align, offset, 4)
-    }
-
-    fn visit_f64_load(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.load(ValueType::F64, align, offset, 8)
-    }
-
-    fn visit_i32_load8_s(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.load(ValueType::I32, align, offset, 1)
-    }
-
-    fn visit_i32_load8_u(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.load(ValueType::I32, align, offset, 1)
-    }
-
-    fn visit_i32_load16_s(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.load(ValueType::I32, align, offset, 2)
-    }
-
-    fn visit_i32_load16_u(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.load(ValueType::I32, align, offset, 2)
-    }
-
-    fn visit_i64_load8_s(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.load(ValueType::I64, align, offset, 1)
-    }
-
-    fn visit_i64_load8_u(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.load(ValueType::I64, align, offset, 1)
-    }
-
-    fn visit_i64_load16_s(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.load(ValueType::I64, align, offset, 2)
-    }
-
-    fn visit_i64_load16_u(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.load(ValueType::I64, align, offset, 2)
-    }
-
-    fn visit_i64_load32_s(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.load(ValueType::I64, align, offset, 4)
-    }
-
-    fn visit_i64_load32_u(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.load(ValueType::I64, align, offset, 4)
-    }
-
-    fn visit_i32_store(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.store(ValueType::I32, align, offset, 4)
-    }
-
-    fn visit_i64_store(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.store(ValueType::I64, align, offset, 8)
-    }
-
-    fn visit_f32_store(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.store(ValueType::F32, align, offset, 4)
-    }
-
-    fn visit_f64_store(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.store(ValueType::F64, align, offset, 8)
-    }
-
-    fn visit_i32_store8(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.store(ValueType::I32, align, offset, 1)
-    }
-
-    fn visit_i32_store16(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.store(ValueType::I32, align, offset, 2)
-    }
-
-    fn visit_i64_store8(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.store(ValueType::I64, align, offset, 1)
-    }
-
-    fn visit_i64_store16(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.store(ValueType::I64, align, offset, 2)
-    }
-
-    fn visit_i64_store32(&mut self, align:u32, offset:u32) -> Self::Output {
-        self.store(ValueType::I64, align, offset, 4)
-    }
-
-    fn visit_i32_const(&mut self, _value: i32) -> Self::Output {
-        self.push(ValueType::I32)
-    }
-
-    fn visit_i64_const(&mut self, _value: i64) -> Self::Output {
-        self.push(ValueType::I64)
-    }
-
-    fn visit_f32_const(&mut self, _value: f32) -> Self::Output {
-        self.push(ValueType::F32)
-    }
-
-    fn visit_f64_const(&mut self, _value: f64) -> Self::Output {
-        self.push(ValueType::F64)
-    }
-
-    fn visit_i32_eqz(&mut self) -> Self::Output {
-        self.test_op(ValueType::I32)
-    }
-
-    fn visit_i32_eq(&mut self) -> Self::Output {
-        self.rel_op(ValueType::I32)
-    }
-
-    fn visit_i32_ne(&mut self) -> Self::Output {
-        self.rel_op(ValueType::I32)
-    }
-
-    fn visit_i32_lt_s(&mut self) -> Self::Output {
-        self.rel_op(ValueType::I32)
-    }
-
-    fn visit_i32_lt_u(&mut self) -> Self::Output {
-        self.rel_op(ValueType::I32)
-    }
-
-    fn visit_i32_gt_s(&mut self) -> Self::Output {
-        self.rel_op(ValueType::I32)
-    }
-
-    fn visit_i32_gt_u(&mut self) -> Self::Output {
-        self.rel_op(ValueType::I32)
-    }
-
-    fn visit_i32_le_s(&mut self) -> Self::Output {
-        self.rel_op(ValueType::I32)
-    }
-
-    fn visit_i32_le_u(&mut self) -> Self::Output {
-        self.rel_op(ValueType::I32)
-    }
-
-    fn visit_i32_ge_s(&mut self) -> Self::Output {
-        self.rel_op(ValueType::I32)
-    }
-
-    fn visit_i32_ge_u(&mut self) -> Self::Output {
-        self.rel_op(ValueType::I32)
-    }
-
-    fn visit_i64_eqz(&mut self) -> Self::Output {
-        self.test_op(ValueType::I64)
-    }
-
-    fn visit_i64_eq(&mut self) -> Self::Output {
-        self.rel_op(ValueType::I64)
-    }
-
-    fn visit_i64_ne(&mut self) -> Self::Output {
-        self.rel_op(ValueType::I64)
-    }
-
-    fn visit_i64_lt_s(&mut self) -> Self::Output {
-        self.rel_op(ValueType::I64)
-    }
-
-    fn visit_i64_lt_u(&mut self) -> Self::Output {
-        self.rel_op(ValueType::I64)
-    }
-
-    fn visit_i64_gt_s(&mut self) -> Self::Output {
-        self.rel_op(ValueType::I64)
-    }
-
-    fn visit_i64_gt_u(&mut self) -> Self::Output {
-        self.rel_op(ValueType::I64)
-    }
-
-    fn visit_i64_le_s(&mut self) -> Self::Output {
-        self.rel_op(ValueType::I64)
-    }
-
-    fn visit_i64_le_u(&mut self) -> Self::Output {
-        self.rel_op(ValueType::I64)
-    }
-
-    fn visit_i64_ge_s(&mut self) -> Self::Output {
-        self.rel_op(ValueType::I64)
-    }
-
-    fn visit_i64_ge_u(&mut self) -> Self::Output {
-        self.rel_op(ValueType::I64)
-    }
-
-    fn visit_f32_eq(&mut self) -> Self::Output {
-        self.rel_op(ValueType::F32)
-    }
-
-    fn visit_f32_ne(&mut self) -> Self::Output {
-        self.rel_op(ValueType::F32)
-    }
-
-    fn visit_f32_lt(&mut self) -> Self::Output {
-        self.rel_op(ValueType::F32)
-    }
-
-    fn visit_f32_gt(&mut self) -> Self::Output {
-        self.rel_op(ValueType::F32)
-    }
-
-    fn visit_f32_le(&mut self) -> Self::Output {
-        self.rel_op(ValueType::F32)
-    }
-
-    fn visit_f32_ge(&mut self) -> Self::Output {
-        self.rel_op(ValueType::F32)
-    }
-
-    fn visit_f64_eq(&mut self) -> Self::Output {
-        self.rel_op(ValueType::F64)
-    }
-
-    fn visit_f64_ne(&mut self) -> Self::Output {
-        self.rel_op(ValueType::F64)
-    }
-
-    fn visit_f64_lt(&mut self) -> Self::Output {
-        self.rel_op(ValueType::F64)
-    }
-
-    fn visit_f64_gt(&mut self) -> Self::Output {
-        self.rel_op(ValueType::F64)
-    }
-
-    fn visit_f64_le(&mut self) -> Self::Output {
-        self.rel_op(ValueType::F64)
-    }
-
-    fn visit_f64_ge(&mut self) -> Self::Output {
-        self.rel_op(ValueType::F64)
-    }
-
-    fn visit_i32_clz(&mut self) -> Self::Output {
-        self.un_op(ValueType::I32)
-    }
-
-    fn visit_i32_ctz(&mut self) -> Self::Output {
-        self.un_op(ValueType::I32)
-    }
-
-    fn visit_i32_popcnt(&mut self) -> Self::Output {
-        self.un_op(ValueType::I32)
-    }
-
-    fn visit_i32_add(&mut self) -> Self::Output {
-        self.bin_op(ValueType::I32)
-    }
-
-    fn visit_i32_sub(&mut self) -> Self::Output {
-        self.bin_op(ValueType::I32)
-    }
-
-    fn visit_i32_mul(&mut self) -> Self::Output {
-        self.bin_op(ValueType::I32)
-    }
-
-    fn visit_i32_div_s(&mut self) -> Self::Output {
-        self.bin_op(ValueType::I32)
-    }
-
-    fn visit_i32_div_u(&mut self) -> Self::Output {
-        self.bin_op(ValueType::I32)
-    }
-
-    fn visit_i32_rem_s(&mut self) -> Self::Output {
-        self.bin_op(ValueType::I32)
-    }
-
-    fn visit_i32_rem_u(&mut self) -> Self::Output {
-        self.bin_op(ValueType::I32)
-    }
-
-    fn visit_i32_and(&mut self) -> Self::Output {
-        self.bin_op(ValueType::I32)
-    }
-
-    fn visit_i32_or(&mut self) -> Self::Output {
-        self.bin_op(ValueType::I32)
-    }
-
-    fn visit_i32_xor(&mut self) -> Self::Output {
-        self.bin_op(ValueType::I32)
-    }
-
-    fn visit_i32_shl(&mut self) -> Self::Output {
-        self.bin_op(ValueType::I32)
-    }
-
-    fn visit_i32_shr_s(&mut self) -> Self::Output {
-        self.bin_op(ValueType::I32)
-    }
-
-    fn visit_i32_shr_u(&mut self) -> Self::Output {
-        self.bin_op(ValueType::I32)
-    }
-
-    fn visit_i32_rotl(&mut self) -> Self::Output {
-        self.bin_op(ValueType::I32)
-    }
-
-    fn visit_i32_rotr(&mut self) -> Self::Output {
-        self.bin_op(ValueType::I32)
-    }
-
-    fn visit_i64_clz(&mut self) -> Self::Output {
-        self.un_op(ValueType::I64)
-    }
-
-    fn visit_i64_ctz(&mut self) -> Self::Output {
-        self.un_op(ValueType::I64)
-    }
-
-    fn visit_i64_popcnt(&mut self) -> Self::Output {
-        self.un_op(ValueType::I64)
-    }
-
-    fn visit_i64_add(&mut self) -> Self::Output {
-        self.bin_op(ValueType::I64)
-    }
-
-    fn visit_i64_sub(&mut self) -> Self::Output {
-        self.bin_op(ValueType::I64)
-    }
-
-    fn visit_i64_mul(&mut self) -> Self::Output {
-        self.bin_op(ValueType::I64)
-    }
-
-    fn visit_i64_div_s(&mut self) -> Self::Output {
-        self.bin_op(ValueType::I64)
-    }
-
-    fn visit_i64_div_u(&mut self) -> Self::Output {
-        self.bin_op(ValueType::I64)
-    }
-
-    fn visit_i64_rem_s(&mut self) -> Self::Output {
-        self.bin_op(ValueType::I64)
-    }
-
-    fn visit_i64_rem_u(&mut self) -> Self::Output {
-        self.bin_op(ValueType::I64)
-    }
-
-    fn visit_i64_and(&mut self) -> Self::Output {
-        self.bin_op(ValueType::I64)
-    }
-
-    fn visit_i64_or(&mut self) -> Self::Output {
-        self.bin_op(ValueType::I64)
-    }
-
-    fn visit_i64_xor(&mut self) -> Self::Output {
-        self.bin_op(ValueType::I64)
-    }
-
-    fn visit_i64_shl(&mut self) -> Self::Output {
-        self.bin_op(ValueType::I64)
-    }
-
-    fn visit_i64_shr_s(&mut self) -> Self::Output {
-        self.bin_op(ValueType::I64)
-    }
-
-    fn visit_i64_shr_u(&mut self) -> Self::Output {
-        self.bin_op(ValueType::I64)
-    }
-
-    fn visit_i64_rotl(&mut self) -> Self::Output {
-        self.bin_op(ValueType::I64)
-    }
-
-    fn visit_i64_rotr(&mut self) -> Self::Output {
-        self.bin_op(ValueType::I64)
-    }
-
-    fn visit_f32_abs(&mut self) -> Self::Output {
-        self.un_op(ValueType::F32)
-    }
-
-    fn visit_f32_neg(&mut self) -> Self::Output {
-        self.un_op(ValueType::F32)
-    }
-
-    fn visit_f32_ceil(&mut self) -> Self::Output {
-        self.un_op(ValueType::F32)
-    }
-
-    fn visit_f32_floor(&mut self) -> Self::Output {
-        self.un_op(ValueType::F32)
-    }
-
-    fn visit_f32_trunc(&mut self) -> Self::Output {
-        self.un_op(ValueType::F32)
-    }
-
-    fn visit_f32_nearest(&mut self) -> Self::Output {
-        self.un_op(ValueType::F32)
-    }
-
-    fn visit_f32_sqrt(&mut self) -> Self::Output {
-        self.un_op(ValueType::F32)
-    }
-
-    fn visit_f32_add(&mut self) -> Self::Output {
-        self.bin_op(ValueType::F32)
-    }
-
-    fn visit_f32_sub(&mut self) -> Self::Output {
-        self.bin_op(ValueType::F32)
-    }
-
-    fn visit_f32_mul(&mut self) -> Self::Output {
-        self.bin_op(ValueType::F32)
-    }
-
-    fn visit_f32_div(&mut self) -> Self::Output {
-        self.bin_op(ValueType::F32)
-    }
-
-    fn visit_f32_min(&mut self) -> Self::Output {
-        self.bin_op(ValueType::F32)
-    }
-
-    fn visit_f32_max(&mut self) -> Self::Output {
-        self.bin_op(ValueType::F32)
-    }
-
-    fn visit_f32_copysign(&mut self) -> Self::Output {
-        self.bin_op(ValueType::F32)
-    }
-
-    fn visit_f64_abs(&mut self) -> Self::Output {
-        self.un_op(ValueType::F64)
-    }
-
-    fn visit_f64_neg(&mut self) -> Self::Output {
-        self.un_op(ValueType::F64)
-    }
-
-    fn visit_f64_ceil(&mut self) -> Self::Output {
-        self.un_op(ValueType::F64)
-    }
-
-    fn visit_f64_floor(&mut self) -> Self::Output {
-        self.un_op(ValueType::F64)
-    }
-
-    fn visit_f64_trunc(&mut self) -> Self::Output {
-        self.un_op(ValueType::F64)
-    }
-
-    fn visit_f64_nearest(&mut self) -> Self::Output {
-        self.un_op(ValueType::F64)
-    }
-
-    fn visit_f64_sqrt(&mut self) -> Self::Output {
-        self.un_op(ValueType::F64)
-    }
-
-    fn visit_f64_add(&mut self) -> Self::Output {
-        self.bin_op(ValueType::F64)
-    }
-
-    fn visit_f64_sub(&mut self) -> Self::Output {
-        self.bin_op(ValueType::F64)
-    }
-
-    fn visit_f64_mul(&mut self) -> Self::Output {
-        self.bin_op(ValueType::F64)
-    }
-
-    fn visit_f64_div(&mut self) -> Self::Output {
-        self.bin_op(ValueType::F64)
-    }
-
-    fn visit_f64_min(&mut self) -> Self::Output {
-        self.bin_op(ValueType::F64)
-    }
-
-    fn visit_f64_max(&mut self) -> Self::Output {
-        self.bin_op(ValueType::F64)
-    }
-
-    fn visit_f64_copysign(&mut self) -> Self::Output {
-        self.bin_op(ValueType::F64)
-    }
-
-    fn visit_i32_wrap_i64(&mut self) -> Self::Output {
-        self.cvt_op(ValueType::I32, ValueType::I64)
-    }
-
-    fn visit_i32_trunc_f32_s(&mut self) -> Self::Output {
-        self.cvt_op(ValueType::I32, ValueType::F32)
-    }
-
-    fn visit_i32_trunc_f32_u(&mut self) -> Self::Output {
-        self.cvt_op(ValueType::I32, ValueType::F32)
-    }
-
-    fn visit_i32_trunc_f64_s(&mut self) -> Self::Output {
-        self.cvt_op(ValueType::I32, ValueType::F64)
-    }
-
-    fn visit_i32_trunc_f64_u(&mut self) -> Self::Output {
-        self.cvt_op(ValueType::I32, ValueType::F64)
-    }
-
-    fn visit_i64_extend_i32_s(&mut self) -> Self::Output {
-        self.cvt_op(ValueType::I64, ValueType::I32)
-    }
-
-    fn visit_i64_extend_i32_u(&mut self) -> Self::Output {
-        self.cvt_op(ValueType::I64, ValueType::I32)
-    }
-
-    fn visit_i64_trunc_f32_s(&mut self) -> Self::Output {
-        self.cvt_op(ValueType::I64, ValueType::F32)
-    }
-
-    fn visit_i64_trunc_f32_u(&mut self) -> Self::Output {
-        self.cvt_op(ValueType::I64, ValueType::F32)
-    }
-
-    fn visit_i64_trunc_f64_s(&mut self) -> Self::Output {
-        self.cvt_op(ValueType::I64, ValueType::F64)
-    }
-
-    fn visit_i64_trunc_f64_u(&mut self) -> Self::Output {
-        self.cvt_op(ValueType::I64, ValueType::F64)
-    }
-
-    fn visit_f32_convert_i32_s(&mut self) -> Self::Output {
-        self.cvt_op(ValueType::F32, ValueType::I32)
-    }
-
-    fn visit_f32_convert_i32_u(&mut self) -> Self::Output {
-        self.cvt_op(ValueType::F32, ValueType::I32)
-    }
-
-    fn visit_f32_convert_i64_s(&mut self) -> Self::Output {
-        self.cvt_op(ValueType::F32, ValueType::I64)
-    }
-
-    fn visit_f32_convert_i64_u(&mut self) -> Self::Output {
-        self.cvt_op(ValueType::F32, ValueType::I64)
-    }
-
-    fn visit_f32_demote_f64(&mut self) -> Self::Output {
-        self.cvt_op(ValueType::F32, ValueType::F64)
-    }
-
-    fn visit_f64_convert_i32_s(&mut self) -> Self::Output {
-        self.cvt_op(ValueType::F64, ValueType::I32)
-    }
-
-    fn visit_f64_convert_i32_u(&mut self) -> Self::Output {
-        self.cvt_op(ValueType::F64, ValueType::I32)
-    }
-
-    fn visit_f64_convert_i64_s(&mut self) -> Self::Output {
-        self.cvt_op(ValueType::F64, ValueType::I64)
-    }
-
-    fn visit_f64_convert_i64_u(&mut self) -> Self::Output {
-        self.cvt_op(ValueType::F64, ValueType::I64)
-    }
-
-    fn visit_f64_promote_f32(&mut self) -> Self::Output {
-        self.cvt_op(ValueType::F64, ValueType::F32)
-    }
-
-    fn visit_i32_reinterpret_f32(&mut self) -> Self::Output {
-        self.cvt_op(ValueType::I32, ValueType::F32)
-    }
-
-    fn visit_i64_reinterpret_f64(&mut self) -> Self::Output {
-        self.cvt_op(ValueType::I64, ValueType::F64)
-    }
-
-    fn visit_f32_reinterpret_i32(&mut self) -> Self::Output {
-        self.cvt_op(ValueType::F32, ValueType::I32)
-    }
-
-    fn visit_f64_reinterpret_i64(&mut self) -> Self::Output {
-        self.cvt_op(ValueType::F64, ValueType::I64)
-    }
-
-    fn visit_i32_extend8_s(&mut self) -> Self::Output {
-        self.un_op(ValueType::I32)
-    }
-
-    fn visit_i32_extend16_s(&mut self) -> Self::Output {
-        self.un_op(ValueType::I32)
-    }
-
-    fn visit_i64_extend8_s(&mut self) -> Self::Output {
-        self.un_op(ValueType::I64)
-    }
-
-    fn visit_i64_extend16_s(&mut self) -> Self::Output {
-        self.un_op(ValueType::I64)
-    }
-
-    fn visit_i64_extend32_s(&mut self) -> Self::Output {
-        self.un_op(ValueType::I64)
-    }
-
-    fn visit_ref_null(&mut self, ty: RefType) -> Self::Output {
-        self.push(ty.to_value_type())
-    }
-
-    fn visit_ref_is_null(&mut self) -> Self::Output {
-        if !self.is_unreachable() {
-            let ty = self.pop()?;
-            match ty {
-                ValueType::FuncRef |
-                ValueType::ExternRef => (),
-
-                ValueType::I32 |
-                ValueType::I64 |
-                ValueType::F32 |
-                ValueType::F64 |
-                ValueType::V128 => return Err(ValidatorError::RefTypeExpected { found: ty })
-            }
-
-            self.push(ValueType::I32)?;
-        }
-        return Ok(());
-    }
-
-    fn visit_ref_func(&mut self) -> Self::Output {
-        return Err(ValidatorError::Todo);
-    }
-
-    fn visit_memory_size(&mut self, mem: MemoryIdx) -> Self::Output {
-        self.memory(mem)?;
-        self.push(ValueType::I32)
-    }
-
-    fn visit_memory_grow(&mut self, mem: MemoryIdx) -> Self::Output {
-        self.memory(mem)?;
-        self.expect(ValueType::I32)?;
-        self.push(ValueType::I32)
-    }
-
-    fn visit_memory_copy(&mut self, dst: MemoryIdx, src: MemoryIdx) -> Self::Output {
-        self.memory(dst)?;
-        self.memory(src)?;
-        self.expect(ValueType::I32)?;
-        self.expect(ValueType::I32)?;
-        self.expect(ValueType::I32)
-    }
-
-    fn visit_memory_fill(&mut self, mem: MemoryIdx) -> Self::Output {
-        self.memory(mem)?;
-        self.expect(ValueType::I32)?;
-        self.expect(ValueType::I32)?;
-        self.expect(ValueType::I32)
+    #[inline]
+    fn error(&self, kind: ErrorKind) -> Error {
+        Error { pos: self.pos, kind }
     }
 }
-*/
-
 

@@ -2,7 +2,7 @@ use sti::reader::Reader;
 use sti::arena::Arena;
 use sti::vec::Vec;
 
-use crate::{leb128, BrTable, Error, ErrorKind, Result};
+use crate::{leb128, BrTable, Error, ErrorKind, Result, TypeIdx, FuncIdx, TableIdx, MemoryIdx, GlobalIdx};
 use crate::{ValueType, RefType, FuncType, BlockType, Limits, TableType, MemoryType, GlobalType};
 use crate::{Import, ImportKind, Imports, Global, Export, ExportKind, Element, ElementKind, Code, Data, DataKind};
 use crate::{SubSection, Section, SectionKind, CustomSection};
@@ -156,6 +156,20 @@ impl<'a> Parser<'a> {
             return Ok(BlockType::Func(ty));
         }
     }
+
+    #[inline] pub fn parse_type_idx(&mut self) -> Result<TypeIdx> { self.parse_u32() }
+
+    #[inline] pub fn parse_label(&mut self) -> Result<u32> { self.parse_u32() }
+
+    #[inline] pub fn parse_local_idx(&mut self) -> Result<u32> { self.parse_u32() }
+
+    #[inline] pub fn parse_func_idx(&mut self) -> Result<FuncIdx> { self.parse_u32() }
+
+    #[inline] pub fn parse_table_idx(&mut self) -> Result<TableIdx> { self.parse_u32() }
+
+    #[inline] pub fn parse_memory_idx(&mut self) -> Result<MemoryIdx> { self.parse_u32() }
+
+    #[inline] pub fn parse_global_idx(&mut self) -> Result<GlobalIdx> { self.parse_u32() }
 
     pub fn parse_limits(&mut self) -> Result<Limits> {
         return Ok(match self.next()? {

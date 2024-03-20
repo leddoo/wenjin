@@ -12,7 +12,7 @@ def opcode_enum():
         name = to_upper_camel(opcode[COL_NAME])
         print(f"    {name},")
     print("}")
-    print()
+    print(f"const NUM_OPCODES: usize = {len(opcodes)};")
 
 
 def parse_table():
@@ -82,6 +82,9 @@ def parse_table():
 
 
 def opcode_class():
+    print("#[derive(Clone, Copy, Debug)]")
+    print("pub enum OpcodeClass {")
+    print("    Basic { pop: &'static [ValueType], push: &'static [ValueType] },")
     for opcode in opcodes:
         name = opcode[COL_NAME]
         imm = opcode[COL_IMM]
@@ -91,14 +94,29 @@ def opcode_class():
 
         special = "c" in flags
         assert not len(imm) > 0 or special
+        assert not "!" in flags or special
         assert not special or len(args) == 0
         assert not special or len(rets) == 0
 
         if special:
-            print(name)
+            print(f"    {to_upper_camel(name)},")
+    print("}")
+
+    print("const CLASS: &[OpcodeClass; NUM_OPCODES] = &[")
+    for opcode in opcodes:
+        name = opcode[COL_NAME]
+        args = opcode[COL_ARGS]
+        rets = opcode[COL_RETS]
+        flags = opcode[COL_FLAGS]
+
+        special = "c" in flags
+        if special:
+            print(f"    OpcodeClass::{to_upper_camel(name)},")
         else:
-            print("#pure", name)
-    pass
+            pop  = ",".join(map(lambda ty: f"ValueType::{ty.capitalize()}", args))
+            push = ",".join(map(lambda ty: f"ValueType::{ty.capitalize()}", rets))
+            print(f"    OpcodeClass::Basic {{ pop: &[{pop}], push: &[{push}] }},")
+    print("];")
 
 
 opcode_enum()
