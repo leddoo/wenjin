@@ -1,39 +1,8 @@
 use sti::traits::CopyIt;
 use sti::vec::Vec;
 
+use crate::{Result, Error, ErrorKind};
 use crate::{ValueType, BlockType, TypeIdx, FuncIdx, TableIdx, MemoryIdx, GlobalIdx, Module, TableType, FuncType, RefType, GlobalType, MemoryType, BrTable};
-use crate::operator::OperatorVisitor;
-
-
-#[derive(Clone, Copy, Debug)]
-pub enum ValidatorError {
-    StackLimit,
-    StackUnderflow,
-    TypeMismatch { expected: ValueType, found: ValueType },
-    RefTypeExpected { found: ValueType },
-    FrameLimit,
-    FrameExtraStack,
-    UnexpectedElse,
-    UnexpectedEnd,
-    MissingEnd,
-    InvalidLabel,
-    InvalidTypeIdx,
-    InvalidFuncIdx,
-    InvalidTableIdx,
-    InvalidMemoryIdx,
-    InvalidGlobalIdx,
-    InvalidLocalIdx,
-    InvalidGlobalInit,
-    NonIdIfWithoutElse,
-    BrTableInvalidTargetTypes { label: u32 },
-    CallIndirectTableNotOfFuncRefs,
-    SelectUnexpectedRefType,
-    SelectTypeMismatch(ValueType, ValueType),
-    GlobalNotMutable,
-    AlignTooLarge,
-    LoadStoreRefType,
-    Todo,
-}
 
 
 pub const DEFAULT_STACK_LIMIT: u32 = 1024;
@@ -105,6 +74,7 @@ impl<'a> Validator<'a> {
     }
 
 
+    /*
     pub fn begin_func(&mut self, ty: TypeIdx, locals: &[ValueType]) -> Result<(), ValidatorError> {
         self.locals.truncate(0);
         let params = self.ty(ty)?.params;
@@ -136,6 +106,7 @@ impl<'a> Validator<'a> {
         assert_eq!(self.stack.len(), 0);
         return Ok(());
     }
+    */
 
     pub fn is_unreachable(&self) -> bool {
         self.frames.rev(0).unreachable
@@ -148,10 +119,11 @@ impl<'a> Validator<'a> {
     }
 
 
-    fn push(&mut self, ty: ValueType) -> Result<(), ValidatorError> {
+    fn push(&mut self, ty: ValueType) -> Result<()> {
         if !self.is_unreachable() {
             if self.stack.len() >= self.stack_limit as usize {
-                return Err(ValidatorError::StackLimit);
+                todo!()
+                //return Err(ValidatorError::StackLimit);
             }
 
             self.stack.push(ty);
@@ -159,38 +131,41 @@ impl<'a> Validator<'a> {
         return Ok(());
     }
 
-    fn push_n(&mut self, tys: &[ValueType]) -> Result<(), ValidatorError> {
+    fn push_n(&mut self, tys: &[ValueType]) -> Result<()> {
         for ty in tys {
             self.push(*ty)?;
         }
         return Ok(());
     }
 
-    fn pop(&mut self) -> Result<ValueType, ValidatorError> {
+    fn pop(&mut self) -> Result<ValueType> {
         debug_assert!(!self.is_unreachable());
 
         if self.stack.len() <= self.frames.rev(0).height as usize {
-            return Err(ValidatorError::StackUnderflow);
+            todo!()
+            //return Err(ValidatorError::StackUnderflow);
         }
 
         return Ok(self.stack.pop().unwrap());
     }
 
-    fn expect(&mut self, expected_ty: ValueType) -> Result<(), ValidatorError> {
+    fn expect(&mut self, expected_ty: ValueType) -> Result<()> {
         if !self.is_unreachable() {
             if self.stack.len() <= self.frames.rev(0).height as usize {
-                return Err(ValidatorError::StackUnderflow);
+                todo!()
+                //return Err(ValidatorError::StackUnderflow);
             }
 
             let ty = self.stack.pop().unwrap();
             if ty != expected_ty {
-                return Err(ValidatorError::TypeMismatch { expected: expected_ty, found: ty });
+                todo!()
+                //return Err(ValidatorError::TypeMismatch { expected: expected_ty, found: ty });
             }
         }
         return Ok(());
     }
 
-    fn expect_n(&mut self, expected_tys: &[ValueType]) -> Result<(), ValidatorError> {
+    fn expect_n(&mut self, expected_tys: &[ValueType]) -> Result<()> {
         for ty in expected_tys.iter().rev() {
             self.expect(*ty)?;
         }
@@ -199,9 +174,10 @@ impl<'a> Validator<'a> {
 
 
     // pushes the block begin types.
-    fn push_frame(&mut self, kind: ControlFrameKind, ty: BlockType) -> Result<(), ValidatorError> {
+    fn push_frame(&mut self, kind: ControlFrameKind, ty: BlockType) -> Result<()> {
         if self.frames.len() >= self.frame_limit as usize {
-            return Err(ValidatorError::FrameLimit);
+            //return Err(ValidatorError::FrameLimit);
+            todo!()
         }
 
         let height = self.stack.len() as u32;
@@ -219,14 +195,16 @@ impl<'a> Validator<'a> {
     }
 
     // expects the block end types.
-    fn pop_frame(&mut self) -> Result<ControlFrame, ValidatorError> {
+    fn pop_frame(&mut self) -> Result<ControlFrame> {
         let Some(frame) = self.frames.last().copied() else {
-            return Err(ValidatorError::UnexpectedEnd);
+            todo!()
+            //return Err(ValidatorError::UnexpectedEnd);
         };
 
         self.expect_n(self.block_end_types(frame.ty))?;
         if self.stack.len() != frame.height as usize {
-            return Err(ValidatorError::FrameExtraStack);
+            todo!()
+            //return Err(ValidatorError::FrameExtraStack);
         }
 
         let frame = self.frames.pop().unwrap();
@@ -234,50 +212,57 @@ impl<'a> Validator<'a> {
     }
 
 
-    fn label(&self, idx: u32) -> Result<ControlFrame, ValidatorError> {
+    fn label(&self, idx: u32) -> Result<ControlFrame> {
         // @todo: get_rev
         let idx = idx as usize;
         if idx >= self.frames.len() {
-            return Err(ValidatorError::InvalidLabel);
+            todo!()
+            //return Err(ValidatorError::InvalidLabel);
         }
         Ok(*self.frames.rev(idx))
     }
 
-    fn ty(&self, idx: TypeIdx) -> Result<FuncType<'a>, ValidatorError> {
+    fn ty(&self, idx: TypeIdx) -> Result<FuncType<'a>> {
         self.module.types.get(idx as usize).copied()
-            .ok_or_else(|| ValidatorError::InvalidTypeIdx)
+            .ok_or_else(|| todo!())
+            //.ok_or_else(|| ValidatorError::InvalidTypeIdx)
     }
 
-    fn local(&self, idx: u32) -> Result<ValueType, ValidatorError> {
+    fn local(&self, idx: u32) -> Result<ValueType> {
         self.locals.get(idx as usize).copied()
-            .ok_or_else(|| ValidatorError::InvalidLocalIdx)
+            .ok_or_else(|| todo!())
+            //.ok_or_else(|| ValidatorError::InvalidLocalIdx)
     }
 
-    fn func(&self, idx: FuncIdx) -> Result<FuncType<'a>, ValidatorError> {
+    fn func(&self, idx: FuncIdx) -> Result<FuncType<'a>> {
         let type_idx = self.module.get_func(idx)
-            .ok_or_else(|| ValidatorError::InvalidFuncIdx)?;
+            .ok_or_else(|| todo!())?;
+            //.ok_or_else(|| ValidatorError::InvalidFuncIdx)?;
         // by imports-valid, funcs-valid.
         Ok(self.module.types[type_idx as usize])
     }
 
-    fn table(&self, idx: TableIdx) -> Result<TableType, ValidatorError> {
+    fn table(&self, idx: TableIdx) -> Result<TableType> {
         self.module.get_table(idx)
-            .ok_or_else(|| ValidatorError::InvalidTableIdx)
+            .ok_or_else(|| todo!())
+            //.ok_or_else(|| ValidatorError::InvalidTableIdx)
     }
 
-    fn memory(&self, idx: TableIdx) -> Result<MemoryType, ValidatorError> {
+    fn memory(&self, idx: TableIdx) -> Result<MemoryType> {
         self.module.get_memory(idx)
-            .ok_or_else(|| ValidatorError::InvalidMemoryIdx)
+            .ok_or_else(|| todo!())
+            //.ok_or_else(|| ValidatorError::InvalidMemoryIdx)
     }
 
-    fn global(&self, idx: u32) -> Result<GlobalType, ValidatorError> {
+    fn global(&self, idx: u32) -> Result<GlobalType> {
         self.module.get_global(idx)
-            .ok_or_else(|| ValidatorError::InvalidGlobalIdx)
+            .ok_or_else(|| todo!())
+            //.ok_or_else(|| ValidatorError::InvalidGlobalIdx)
     }
 
 
     #[inline]
-    fn check_load_store(&self, ty: ValueType, align: u32, max_align: u32) -> Result<(), ValidatorError> {
+    fn check_load_store(&self, ty: ValueType, align: u32, max_align: u32) -> Result<()> {
         self.memory(0)?;
 
         match ty {
@@ -286,62 +271,64 @@ impl<'a> Validator<'a> {
             ValueType::V128 => (),
 
             ValueType::FuncRef |
-            ValueType::ExternRef => return Err(ValidatorError::LoadStoreRefType)
+            ValueType::ExternRef => todo!()//return Err(ValidatorError::LoadStoreRefType)
         };
 
         let Some(align) = 1u32.checked_shl(align) else {
-            return Err(ValidatorError::AlignTooLarge);
+            todo!()
+            //return Err(ValidatorError::AlignTooLarge);
         };
 
         if align > max_align {
-            return Err(ValidatorError::AlignTooLarge);
+            todo!()
+            //return Err(ValidatorError::AlignTooLarge);
         }
 
         return Ok(());
     }
 
     #[inline]
-    fn load(&mut self, ty: ValueType, align: u32, _offset: u32, max_align: u32) -> Result<(), ValidatorError> {
+    fn load(&mut self, ty: ValueType, align: u32, _offset: u32, max_align: u32) -> Result<()> {
         self.check_load_store(ty, align, max_align)?;
         self.expect(ValueType::I32)?;
         self.push(ty)
     }
 
     #[inline]
-    fn store(&mut self, ty: ValueType, align: u32, _offset: u32, max_align: u32) -> Result<(), ValidatorError> {
+    fn store(&mut self, ty: ValueType, align: u32, _offset: u32, max_align: u32) -> Result<()> {
         self.check_load_store(ty, align, max_align)?;
         self.expect(ty)?;
         self.expect(ValueType::I32)
     }
 
     #[inline]
-    fn test_op(&mut self, ty: ValueType) -> Result<(), ValidatorError> {
+    fn test_op(&mut self, ty: ValueType) -> Result<()> {
         self.expect(ty)?;
         self.push(ValueType::I32)
     }
 
     #[inline]
-    fn rel_op(&mut self, ty: ValueType) -> Result<(), ValidatorError> {
+    fn rel_op(&mut self, ty: ValueType) -> Result<()> {
         self.expect(ty)?;
         self.expect(ty)?;
         self.push(ValueType::I32)
     }
 
     #[inline]
-    fn un_op(&mut self, ty: ValueType) -> Result<(), ValidatorError> {
+    fn un_op(&mut self, ty: ValueType) -> Result<()> {
         self.expect(ty)?;
         self.push(ty)
     }
 
     #[inline]
-    fn bin_op(&mut self, ty: ValueType) -> Result<(), ValidatorError> {
+    fn bin_op(&mut self, ty: ValueType) -> Result<()> {
         self.expect(ty)?;
         self.expect(ty)?;
         self.push(ty)
     }
 
     #[inline]
-    fn cvt_op(&mut self, dst_ty: ValueType, src_ty: ValueType) -> Result<(), ValidatorError> {
+    fn cvt_op(&mut self, dst_ty: ValueType, src_ty: ValueType) -> Result<()> {
         self.expect(src_ty)?;
         self.push(dst_ty)
     }
@@ -371,7 +358,7 @@ impl<'a> Validator<'a> {
     }
 
 
-    pub fn validate_func(&mut self, parser: &mut crate::Parser) -> Result<(), ValidatorError> {
+    pub fn validate_func(&mut self, parser: &mut crate::Parser) -> Result<()> {
 
         while !parser.reader.is_empty() {
             let opcode = parser.parse_opcode().map_err(|_| todo!())?;
@@ -381,6 +368,7 @@ impl<'a> Validator<'a> {
     }
 }
 
+/*
 impl<'a> OperatorVisitor<'a> for Validator<'a> {
     type Output = Result<(), ValidatorError>;
 
@@ -1237,5 +1225,6 @@ impl<'a> OperatorVisitor<'a> for Validator<'a> {
         self.expect(ValueType::I32)
     }
 }
+*/
 
 

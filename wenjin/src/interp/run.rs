@@ -262,6 +262,8 @@ impl Store {
 
             let op = state.next_u8();
             match op {
+                _ => todo!()
+                /* @rework
                 wasm::opcode::UNREACHABLE => {
                     vm_err!(Error::TrapUnreachable);
                 }
@@ -1472,6 +1474,7 @@ impl Store {
                 }
 
                 _ => unreachable!()
+                */
             }
         };
 

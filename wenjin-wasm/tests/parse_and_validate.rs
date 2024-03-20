@@ -12,6 +12,7 @@ fn parse_and_validate<'a>(wasm: &'a [u8], alloc: &'a Arena) -> Module<'a> {
 
         //println!("func {}", i + module.imports.funcs.len());
 
+        /*
         validator.begin_func(module.funcs[i], code.locals).unwrap();
 
         while !p.is_done() {
@@ -21,6 +22,7 @@ fn parse_and_validate<'a>(wasm: &'a [u8], alloc: &'a Arena) -> Module<'a> {
         }
 
         validator.end_func().unwrap();
+        */
     }
 
     return module;

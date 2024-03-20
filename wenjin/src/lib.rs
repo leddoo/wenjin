@@ -9,8 +9,7 @@ mod interp;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Error {
-    Parse(wasm::ParseError),
-    Validation(usize, wasm::ValidatorError),
+    Wasm(wasm::Error),
     MissingImport,
     CallerNotWasm,
     CallerNoMemory,

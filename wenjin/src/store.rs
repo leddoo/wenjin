@@ -246,10 +246,7 @@ impl Store {
         let alloc_static = unsafe { core::mem::transmute::<&Arena, &Arena>(&alloc) };
 
         let module = wasm::Parser::parse_module(wasm_static, Default::default(), alloc_static)
-            .map_err(|e| match e {
-                wasm::ParseModuleError::Parse(e) => Error::Parse(e),
-                wasm::ParseModuleError::Validation(o, e) => Error::Validation(o, e),
-            })?;
+            .map_err(|e| Error::Wasm(e))?;
 
 
         let num_funcs = module.imports.funcs.len() + module.funcs.len();
@@ -326,6 +323,7 @@ impl Store {
         }
 
 
+        /* @rework
         let mut compiler = interp::Compiler::new(&module);
         for (i, code) in module.codes.iter().enumerate() {
             let mut p = wasm::Parser::from_sub_section(&*wasm, code.expr);
@@ -357,6 +355,7 @@ impl Store {
             funcs.push(func.clone());
             self.funcs.push(func);
         }
+        */
         debug_assert_eq!(funcs.len(), num_funcs);
 
         for tab in module.tables {

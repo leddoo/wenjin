@@ -223,8 +223,8 @@ fn main() {
             };
 
             match e {
-                wenjin::Error::Parse(e) => {
-                    use wenjin::wasm::ParseErrorKind as E;
+                wenjin::Error::Wasm(e) => {
+                    use wenjin::wasm::ErrorKind as E;
                     match (message, e.kind) {
                         ("i32 constant", E::Leb128Overflow) |
                         ("unexpected end" | "length out of bounds", E::UnexpectedEof) |
@@ -239,18 +239,6 @@ fn main() {
                             return true;
                         }
 
-                        _ => {
-                            println!("failure: incorrect parse error, {kind} {idx}");
-                            println!("  {e:?}");
-                            println!("  expected {message:?}");
-                            return false;
-                        }
-                    }
-                }
-
-                wenjin::Error::Validation(_, e) => {
-                    use wenjin::wasm::ValidatorError as E;
-                    match (message, e) {
                         ("alignment must not be larger than natural", E::AlignTooLarge) |
                         ("type mismatch",
                          E::TypeMismatch { expected: _, found: _ } |
@@ -275,7 +263,7 @@ fn main() {
                         }
 
                         _ => {
-                            println!("failure: incorrect validation error, {kind} {idx}");
+                            println!("failure: incorrect error, {kind} {idx}");
                             println!("  {e:?}");
                             println!("  expected {message:?}");
                             return false;

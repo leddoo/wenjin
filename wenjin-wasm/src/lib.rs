@@ -1,17 +1,91 @@
 pub mod leb128;
 
 pub mod opcode;
-mod operator;
+//mod operator;
 mod parser;
 mod validator;
 
-pub use operator::{Operator, OperatorVisitor, MkOperator, AndThenOp};
-pub use parser::{Parser, ParseError, ParseErrorKind, ParseModuleError};
-pub use validator::{Validator, ValidatorError};
+pub use parser::Parser;
+pub use validator::Validator;
 
 
 pub const PAGE_SIZE: usize = 64*1024;
 pub const PAGE_SIZE32: u32 = 64*1024;
+
+
+pub type Result<T> = core::result::Result<T, Error>;
+
+#[derive(Clone, Copy, Debug)]
+pub struct Error {
+    pub pos: usize,
+    pub kind: ErrorKind,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum ErrorKind {
+    // parsing.
+    UnexpectedEof,
+    Leb128Overflow,
+    StringNotUtf8,
+    InvalidSignature,
+    InvalidVersion,
+    InvalidValueType,
+    InvalidRefType,
+    InvalidFuncType,
+    InvalidBlockType,
+    InvalidLimits,
+    InvalidGlobalType,
+    InvalidSectionType,
+    InvalidImport,
+    InvalidExport,
+    InvalidElement,
+    InvalidConstExpr,
+    SectionTrailingData,
+    DuplicateSection,
+    TypeSectionLimit,
+    ImportSectionLimit,
+    FuncSectionLimit,
+    TableSectionLimit,
+    MemorySectionLimit,
+    GlobalSectionLimit,
+    ExportSectionLimit,
+    ElementSectionLimit,
+    DataSectionLimit,
+    CustomSectionLimit,
+    FuncSectionNotBeforeCode,
+    NumCodesNeNumFuncs,
+    TooManyLocals,
+    UnsupportedOperator,
+
+    // validation.
+    StackLimit,
+    StackUnderflow,
+    TypeMismatch { expected: ValueType, found: ValueType },
+    RefTypeExpected { found: ValueType },
+    FrameLimit,
+    FrameExtraStack,
+    UnexpectedElse,
+    UnexpectedEnd,
+    MissingEnd,
+    InvalidLabel,
+    InvalidTypeIdx,
+    InvalidFuncIdx,
+    InvalidTableIdx,
+    InvalidMemoryIdx,
+    InvalidGlobalIdx,
+    InvalidLocalIdx,
+    InvalidGlobalInit,
+    NonIdIfWithoutElse,
+    BrTableInvalidTargetTypes { label: u32 },
+    CallIndirectTableNotOfFuncRefs,
+    SelectUnexpectedRefType,
+    SelectTypeMismatch(ValueType, ValueType),
+    GlobalNotMutable,
+    AlignTooLarge,
+    LoadStoreRefType,
+
+    Todo,
+}
 
 
 pub type TypeIdx = u32;

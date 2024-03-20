@@ -21,13 +21,13 @@
 
 - rw#2:
     - table driven validator.
-        - wasm::Error.
         - generate opcode class table.
             - with push/pop for basic.
         - class dependent validation.
     - immutable type stack.
     - optionally generate pc -> type top & pc -> br hash-maps.
     - wasm interp.
+        - move run into `interp[+.rs]`
 
 - todo:
     - unified stack.
