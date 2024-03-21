@@ -160,7 +160,6 @@ impl State {
         let from = (from_pc as usize - self.code_begin as usize) as u32;
 
         let jump = unsafe { &*self.jumps }[&from];
-        dbg!(jump);
         let wasm::Jump { target, shift_num, shift_by } = jump;
 
         if shift_by != 0 { unsafe {
@@ -181,47 +180,6 @@ impl State {
         });
         self.pc = unsafe { self.code_begin.add(target as usize) };
     }
-
-    /*
-    #[inline]
-    fn next_jump(&mut self) -> (*const u8, i32) {
-        (self.pc, self.next_u32() as i32)
-    }
-
-    #[inline]
-    fn next_shift(&mut self) -> (u32, u32) {
-        (self.next_u32(), self.next_u32())
-    }
-
-    #[inline]
-    fn jump(&mut self, (from, delta): (*mut u8, i32)) {
-        unsafe {
-            let delta = delta as isize;
-            debug_assert!({
-                let dst = (from as isize + delta) as usize;
-                dst >= self.code_begin as usize && dst < self.code_end as usize
-            });
-
-            self.pc = from.offset(delta);
-        }
-    }
-
-    #[inline]
-    fn jump_and_shift(&mut self, jump: (*mut u8, i32), (shift_num, shift_by): (u32, u32)) {
-        self.jump(jump);
-        if shift_by != 0 { unsafe {
-            let src = self.sp.sub(shift_num as usize);
-            let dst = src.sub(shift_by as usize);
-            if shift_num == 1 {
-                *dst = *src;
-            }
-            else {
-                core::ptr::copy(src, dst, shift_num as usize);
-            }
-            self.sp = self.sp.sub(shift_by as usize);
-        }}
-    }
-    */
 
     #[inline]
     fn mem_bounds_check(&self, addr: u32, offset: u32, size: u32) -> Result<(), Error> {
@@ -277,8 +235,6 @@ impl State {
 impl Store {
     pub(crate) fn run_interp(&mut self, init_func: FuncId) -> (Result<(), Error>,) {
         assert!(!self.thread.trapped);
-
-        dbg!(init_func);
 
         let mut state = unsafe {
             let func = &*self.funcs[init_func].get();
@@ -360,7 +316,6 @@ impl Store {
                 wasm::opcode::ParseResult::Error =>
                     unreachable_unchecked(),
             }};
-            print!("{op:?} {}\n", (state.sp as usize - state.locals_end as usize)/8);
             match op {
                 Opcode::Unreachable => {
                     vm_err!(Error::TrapUnreachable);
@@ -667,7 +622,11 @@ impl Store {
                 }
 
                 Opcode::TypedSelect => {
-                    todo!()
+                    let _0 = state.next_u8();
+                    let _ty = state.next_u8();
+                    let cond = state.pop().as_i32();
+                    let (b, a) = (state.pop(), state.pop());
+                    state.push(if cond != 0 { a } else { b });
                 }
 
                 Opcode::LocalGet => {

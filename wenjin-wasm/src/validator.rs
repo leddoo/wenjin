@@ -379,22 +379,23 @@ impl<'a> Validator<'a> {
                     }
 
                     let frame = self.pop_frame()?;
-                    let FrameKind::If { the_if, last_use } = frame.kind else {
+                    let FrameKind::If { the_if, mut last_use } = frame.kind else {
                         return Err(self.error(ErrorKind::UnexpectedElse));
                     };
 
                     if let Some(jumps) = jumps.as_mut() {
-                        //let target = (self.pos - begin_func) as u32;
+                        // jump for false case to `else` body from `if`
                         let target = (parser.offset() - begin_func) as u32;
                         jumps.insert(the_if, Jump { target, shift_num: 0, shift_by: 0 });
+
+                        // jump for true case to `end` when hitting `else`.
+                        let this = (parser.offset() - begin_func) as u32;
+                        let target = last_use;
+                        jumps.insert(this, Jump { target, shift_num: 0, shift_by: 0 });
+                        last_use = this;
                     }
 
                     self.push_frame(FrameKind::Else { last_use }, frame.ty)?;
-
-                    if let Some(jumps) = jumps.as_mut() {
-                        let this = (parser.offset() - begin_func) as u32;
-                        jump(self, this, 0, 0, jumps);
-                    }
                 }
 
                 OpcodeClass::End => {

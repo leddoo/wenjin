@@ -20,10 +20,8 @@
       opcode, for setting breakpoints.
 
 - rw#2:
-    - pass tests again.
-        - fix if/else.
-            - then jump should be first, but that breaks more tests??
-            - shifting.
+    - document jump logic.
+    - fix align (mem dependent, no ty).
     - unreachable -> `False`.
     - immutable type stack.
 
