@@ -21,7 +21,6 @@
 
 - rw#2:
     - document jump logic.
-    - fix align (mem dependent, no ty).
     - unreachable -> `False`.
     - immutable type stack.
 

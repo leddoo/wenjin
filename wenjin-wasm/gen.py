@@ -1,4 +1,7 @@
+import re
+
 from opcodes import *
+
 
 def to_upper_camel(name):
     return "".join(map(lambda part: part.capitalize(), name.split("_")))
@@ -117,15 +120,10 @@ def opcode_class():
             pop  = ",".join(map(lambda ty: f"ValueType::{ty.capitalize()}", args))
             push = ",".join(map(lambda ty: f"ValueType::{ty.capitalize()}", rets))
             if "m" in flags:
-                assert "." not in name
-                ty = name.split("_")[0] # todo: "."
-                max_align = None
-                if "32" in ty:
-                    max_align = 4
-                elif "64" in ty:
-                    max_align = 8
-                else:
-                    assert False
+                m = re.findall(r"\d+", name)
+                assert m
+                assert len(m) == 1 or len(m) == 2
+                max_align = int(m[-1])//8
                 print(f"    OpcodeClass::Mem {{ max_align: {max_align}, pop: &[{pop}], push: &[{push}] }},")
             else:
                 print(f"    OpcodeClass::Basic {{ pop: &[{pop}], push: &[{push}] }},")
